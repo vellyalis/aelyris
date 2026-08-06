@@ -955,11 +955,13 @@ pub struct StreamTicketClaim {
     pub mode: StreamMode,
     pub control: StreamControl,
     pub client_id: Option<String>,
+    pub principal: crate::governance::Principal,
 }
 
 #[derive(Clone, Debug)]
 struct ControllerLeaseEntry {
     client_id: String,
+    principal: String,
     acquired_at: Instant,
 }
 
@@ -973,19 +975,29 @@ impl StreamControllerLeases {
         Self::default()
     }
 
-    pub fn acquire(&self, session_id: &str, client_id: &str) -> Result<(), String> {
+    pub fn acquire(
+        &self,
+        session_id: &str,
+        client_id: &str,
+        principal: &str,
+    ) -> Result<(), String> {
         let mut leases = self
             .leases
             .lock()
             .map_err(|_| "controller lease lock poisoned".to_string())?;
         match leases.get(session_id) {
-            Some(existing) if existing.client_id != client_id => Err(existing.client_id.clone()),
+            Some(existing)
+                if existing.client_id != client_id || existing.principal != principal =>
+            {
+                Err(existing.client_id.clone())
+            }
             Some(_) => Ok(()),
             None => {
                 leases.insert(
                     session_id.to_string(),
                     ControllerLeaseEntry {
                         client_id: client_id.to_string(),
+                        principal: principal.to_string(),
                         acquired_at: Instant::now(),
                     },
                 );
@@ -994,13 +1006,13 @@ impl StreamControllerLeases {
         }
     }
 
-    pub fn release(&self, session_id: &str, client_id: &str) -> bool {
+    pub fn release(&self, session_id: &str, client_id: &str, principal: &str) -> bool {
         let Ok(mut leases) = self.leases.lock() else {
             return false;
         };
         let should_release = leases
             .get(session_id)
-            .map(|entry| entry.client_id == client_id)
+            .map(|entry| entry.client_id == client_id && entry.principal == principal)
             .unwrap_or(false);
         if should_release {
             leases.remove(session_id);
@@ -1018,6 +1030,7 @@ impl StreamControllerLeases {
         &self,
         session_id: &str,
         client_id: Option<&str>,
+        principal: &str,
     ) -> Result<(), ApiError> {
         let leases = self
             .leases
@@ -1026,7 +1039,7 @@ impl StreamControllerLeases {
         let Some(entry) = leases.get(session_id) else {
             return Ok(());
         };
-        if client_id == Some(entry.client_id.as_str()) {
+        if client_id == Some(entry.client_id.as_str()) && principal == entry.principal {
             return Ok(());
         }
         Err(ApiError::Conflict(format!(
@@ -1043,6 +1056,14 @@ impl StreamControllerLeases {
     }
 
     #[doc(hidden)]
+    pub fn principal(&self, session_id: &str) -> Option<String> {
+        self.leases
+            .lock()
+            .ok()
+            .and_then(|leases| leases.get(session_id).map(|entry| entry.principal.clone()))
+    }
+
+    #[doc(hidden)]
     pub fn age_ms(&self, session_id: &str) -> Option<u128> {
         self.leases.lock().ok().and_then(|leases| {
             leases
@@ -1056,11 +1077,14 @@ struct ActiveStreamLease {
     leases: Arc<StreamControllerLeases>,
     session_id: String,
     client_id: String,
+    principal: String,
 }
 
 impl Drop for ActiveStreamLease {
     fn drop(&mut self) {
-        let _ = self.leases.release(&self.session_id, &self.client_id);
+        let _ = self
+            .leases
+            .release(&self.session_id, &self.client_id, &self.principal);
     }
 }
 
@@ -1091,8 +1115,10 @@ impl Drop for ActiveMuxClient {
 /// lets browsers avoid putting the long-lived token in URL query strings
 /// (which tend to leak into proxy logs and browser history).
 ///
-/// Each ticket is bound to a specific session_id: redemption only succeeds
-/// when the redeemed ticket's session_id matches the WS URL's path.
+/// Each ticket is bound to a specific session_id and the authenticated issuing
+/// Principal: redemption only succeeds when the ticket's session_id matches the
+/// WS URL's path, and the claim carries that exact Principal into authorization,
+/// controller leasing, terminal-write authority, and payload-free audit.
 ///
 /// Eviction semantics (single-tenant assumption): when `max_live` is hit
 /// we evict the oldest-by-expiry entry. This is safe for Aelyris's
@@ -1111,6 +1137,7 @@ struct TicketEntry {
     mode: StreamMode,
     control: StreamControl,
     client_id: Option<String>,
+    principal: crate::governance::Principal,
     expires_at: Instant,
 }
 
@@ -1142,6 +1169,25 @@ impl TicketRegistry {
         control: StreamControl,
         client_id: Option<String>,
     ) -> (TicketId, Duration) {
+        // Compatibility for internal/tests that predate Principal-aware issuance.
+        // Public HTTP issuance always calls `issue_with_attach_for_principal`.
+        self.issue_with_attach_for_principal(
+            session_id,
+            mode,
+            control,
+            client_id,
+            crate::governance::Principal::default(),
+        )
+    }
+
+    pub fn issue_with_attach_for_principal(
+        &self,
+        session_id: &str,
+        mode: StreamMode,
+        control: StreamControl,
+        client_id: Option<String>,
+        principal: crate::governance::Principal,
+    ) -> (TicketId, Duration) {
         let now = Instant::now();
         let mut map = self.tickets.lock().unwrap();
         Self::prune_expired(&mut map, now);
@@ -1166,6 +1212,7 @@ impl TicketRegistry {
                 mode,
                 control,
                 client_id,
+                principal,
                 expires_at,
             },
         );
@@ -1205,6 +1252,7 @@ impl TicketRegistry {
             mode: entry.mode,
             control: entry.control,
             client_id: entry.client_id.clone(),
+            principal: entry.principal.clone(),
         };
         // One-shot: remove on successful redeem.
         map.remove(ticket);
@@ -1403,8 +1451,12 @@ async fn auth_middleware(
     }
 
     let mut stream_ticket_claim: Option<StreamTicketClaim> = None;
-    let authorized = if state.auth.verify(auth_header.as_deref()) {
-        true
+    let principal = if state.auth.verify(auth_header.as_deref()) {
+        Some(
+            state
+                .governance
+                .resolve_principal(auth_header.as_deref().unwrap_or("")),
+        )
     } else if is_ws {
         // WebSocket query-string auth accepts only short-lived, single-use
         // tickets minted by `POST /sessions/{id}/stream-ticket`. Long-lived
@@ -1422,33 +1474,31 @@ async fn auth_middleware(
                             if let Some(claim) =
                                 state.tickets.redeem_claim_for_session(&ticket, session_id)
                             {
+                                let principal = claim.principal.clone();
                                 stream_ticket_claim = Some(claim);
-                                return true;
+                                return Some(principal);
                             }
                         }
                     }
                 }
-                false
+                None
             })
-            .unwrap_or(false)
+            .flatten()
     } else {
-        false
+        None
     };
 
-    if !authorized {
+    let Some(principal) = principal else {
         return Err(ApiError::Unauthorized);
-    }
+    };
 
     if let Some(claim) = stream_ticket_claim {
         req.extensions_mut().insert(claim);
     }
 
-    // E1: resolve the verified credential to a Principal and carry it in request
-    // extensions, so the authorization layer (and handlers) authorize against one
-    // actor across every surface. Default resolver returns the single operator.
-    let principal = state
-        .governance
-        .resolve_principal(auth_header.as_deref().unwrap_or(""));
+    // E1: carry the already-resolved Principal across every surface. Ticket-authenticated
+    // WebSocket upgrades use the Principal captured at ticket issuance; they never
+    // re-resolve an empty bearer header into the default operator.
     req.extensions_mut().insert(principal);
 
     Ok(next.run(req).await)
@@ -2659,6 +2709,7 @@ async fn close_session(
 
 async fn resize_session(
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<ResizeBody>,
@@ -2667,9 +2718,11 @@ async fn resize_session(
         return Err(ApiError::BadRequest("cols and rows must be > 0".into()));
     }
     let client_id = client_id_from_headers(&headers)?;
-    state
-        .controller_leases
-        .ensure_can_control(&id, client_id.as_deref())?;
+    state.controller_leases.ensure_can_control(
+        &id,
+        client_id.as_deref(),
+        principal.actor.trim(),
+    )?;
     state
         .pty
         .resize(&id, body.cols, body.rows)
@@ -2707,7 +2760,7 @@ async fn send_session_input(
     for target_id in &targets {
         state
             .controller_leases
-            .ensure_can_control(target_id, client_id.as_deref())?;
+            .ensure_can_control(target_id, client_id.as_deref(), principal)?;
     }
     let write = execute_terminal_write(
         &state,
@@ -2865,6 +2918,7 @@ async fn internal_startup_admission(
 
 async fn mint_session_input_approval(
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<InputApprovalBody>,
@@ -2890,9 +2944,11 @@ async fn mint_session_input_approval(
     let targets = synchronized_input_targets(&state, &id)?.unwrap_or_else(|| vec![id.clone()]);
     let client_id = client_id_from_headers(&headers)?;
     for target_id in &targets {
-        state
-            .controller_leases
-            .ensure_can_control(target_id, client_id.as_deref())?;
+        state.controller_leases.ensure_can_control(
+            target_id,
+            client_id.as_deref(),
+            principal.actor.trim(),
+        )?;
     }
     mint_command_input_approval(&state, "rest-session-input", &id, &targets, &body.text).map(Json)
 }
@@ -3067,6 +3123,7 @@ async fn search_session_scrollback(
 /// `TICKET_TTL_SECS`.
 async fn issue_stream_ticket(
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(id): Path<String>,
     Query(query): Query<StreamTicketQuery>,
 ) -> ApiResult<Json<StreamTicket>> {
@@ -3080,9 +3137,18 @@ async fn issue_stream_ticket(
     let mode = parse_stream_mode(query.mode.as_deref())?;
     let control = parse_stream_control(query.control.as_deref())?;
     let client_id = ticket_client_id(query.client_id.as_deref(), mode, control)?;
-    let (ticket, ttl) = state
-        .tickets
-        .issue_with_attach(&id, mode, control, client_id.clone());
+    if principal.actor.trim().is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated stream-ticket principal is unavailable".to_string(),
+        ));
+    }
+    let (ticket, ttl) = state.tickets.issue_with_attach_for_principal(
+        &id,
+        mode,
+        control,
+        client_id.clone(),
+        principal,
+    );
     Ok(Json(StreamTicket {
         ticket: ticket.into_string(),
         expires_in_ms: ttl.as_millis() as u64,
@@ -3133,6 +3199,7 @@ fn extract_stream_session_id(path: &str) -> Option<&str> {
 async fn ws_session(
     ws: WebSocketUpgrade,
     State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
     Path(id): Path<String>,
     Query(query): Query<StreamSessionQuery>,
     ticket_claim: Option<Extension<StreamTicketClaim>>,
@@ -3159,9 +3226,16 @@ async fn ws_session(
         Ok(result) => result,
         Err(e) => return map_pty_err(&id, e).into_response(),
     };
+    let ticket_authenticated = ticket_claim.is_some();
     let (mode, control, client_id) = match ticket_claim {
         Some(Extension(claim)) => {
             debug_assert_eq!(claim.session_id.as_str(), id.as_str());
+            if claim.principal != principal {
+                return ApiError::Forbidden(
+                    "stream-ticket principal continuity check failed".to_string(),
+                )
+                .into_response();
+            }
             (claim.mode, claim.control, claim.client_id)
         }
         None => match parse_stream_mode(query.mode.as_deref()) {
@@ -3180,6 +3254,13 @@ async fn ws_session(
             Err(err) => return err.into_response(),
         },
     };
+    let principal_actor = principal.actor.trim().to_string();
+    if principal_actor.is_empty() {
+        return ApiError::Forbidden(
+            "authenticated WebSocket stream principal is unavailable".to_string(),
+        )
+        .into_response();
+    }
     let active_lease = if mode.can_write() && control.is_exclusive() {
         let Some(client_id) = client_id.clone() else {
             return ApiError::BadRequest(
@@ -3187,7 +3268,10 @@ async fn ws_session(
             )
             .into_response();
         };
-        if let Err(owner) = state.controller_leases.acquire(&id, &client_id) {
+        if let Err(owner) = state
+            .controller_leases
+            .acquire(&id, &client_id, &principal_actor)
+        {
             return ApiError::Conflict(format!("session {id} is controlled by {owner}"))
                 .into_response();
         }
@@ -3195,6 +3279,7 @@ async fn ws_session(
             leases: state.controller_leases.clone(),
             session_id: id.clone(),
             client_id,
+            principal: principal_actor.clone(),
         })
     } else {
         None
@@ -3206,9 +3291,12 @@ async fn ws_session(
             id,
             rx,
             mode,
+            control,
             active_lease,
             initial_replay,
             client_id,
+            principal_actor,
+            ticket_authenticated,
         )
     })
 }
@@ -3225,17 +3313,55 @@ struct StreamSessionQuery {
     replay_clean: Option<bool>,
 }
 
+#[allow(clippy::too_many_arguments)]
+fn audit_ws_terminal_write(
+    state: &ApiState,
+    principal: &str,
+    terminal_id: &str,
+    mode: StreamMode,
+    control: StreamControl,
+    client_id_present: bool,
+    ticket_authenticated: bool,
+    data: &[u8],
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    audit_programmatic_terminal_write(
+        state,
+        "ws_session_input_authority",
+        principal,
+        terminal_id,
+        "ws-session-input",
+        &[terminal_id.to_string()],
+        data,
+        false,
+        status,
+        rejection_code,
+        serde_json::json!({
+            "terminalId": terminal_id,
+            "streamMode": mode,
+            "streamControl": control,
+            "clientIdPresent": client_id_present,
+            "ticketAuthenticated": ticket_authenticated,
+        }),
+    );
+}
+
 async fn handle_ws(
     socket: WebSocket,
     state: ApiState,
     id: String,
     mut rx: broadcast::Receiver<Vec<u8>>,
     mode: StreamMode,
+    control: StreamControl,
     _active_lease: Option<ActiveStreamLease>,
     initial_replay: Option<Vec<u8>>,
     client_id: Option<String>,
+    principal: String,
+    ticket_authenticated: bool,
 ) {
     log::info!("api: WS session {} opened mode={:?}", id, mode);
+    let client_id_present = client_id.is_some();
     let _active_mux_client = match mux::record_stream_client_attached(&state, &id, client_id, mode)
     {
         Ok((workspace_id, client_id)) => Some(ActiveMuxClient {
@@ -3360,6 +3486,18 @@ async fn handle_ws(
                     })
                     .to_string(),
                 );
+                audit_ws_terminal_write(
+                    &write_state,
+                    &principal,
+                    &write_id,
+                    mode,
+                    control,
+                    client_id_present,
+                    ticket_authenticated,
+                    &bytes,
+                    "rejected",
+                    Some("read_only_stream"),
+                );
                 continue;
             }
             if bytes.len() > WS_MAX_INPUT_FRAME_BYTES {
@@ -3376,6 +3514,18 @@ async fn handle_ws(
                     })
                     .to_string(),
                 );
+                audit_ws_terminal_write(
+                    &write_state,
+                    &principal,
+                    &write_id,
+                    mode,
+                    control,
+                    client_id_present,
+                    ticket_authenticated,
+                    &bytes,
+                    "rejected",
+                    Some("input_frame_too_large"),
+                );
                 continue;
             }
             // A1: raw WS bytes are programmatic input. The daemon authority owns both the
@@ -3384,7 +3534,7 @@ async fn handle_ws(
             let result = execute_terminal_write(
                 &write_state,
                 crate::command_risk::authority::WriteActor {
-                    principal: "operator".to_string(),
+                    principal: principal.clone(),
                     kind: crate::command_risk::authority::WriteActorKind::Programmatic,
                 },
                 "ws-session-input",
@@ -3397,6 +3547,23 @@ async fn handle_ws(
             );
             match result {
                 Ok(ack) => {
+                    audit_ws_terminal_write(
+                        &write_state,
+                        &principal,
+                        &write_id,
+                        mode,
+                        control,
+                        client_id_present,
+                        ticket_authenticated,
+                        &bytes,
+                        match &ack.status {
+                            crate::command_risk::authority::TerminalWriteAckStatus::Executed => {
+                                "executed"
+                            }
+                            crate::command_risk::authority::TerminalWriteAckStatus::Held => "held",
+                        },
+                        None,
+                    );
                     let _ = control_tx.send(
                         serde_json::json!({
                             "type": "terminalWriteAck",
@@ -3405,7 +3572,19 @@ async fn handle_ws(
                         .to_string(),
                     );
                 }
-                Err(ApiError::TerminalWriteRejected(_, nack)) => {
+                Err(ApiError::TerminalWriteRejected(code, nack)) => {
+                    audit_ws_terminal_write(
+                        &write_state,
+                        &principal,
+                        &write_id,
+                        mode,
+                        control,
+                        client_id_present,
+                        ticket_authenticated,
+                        &bytes,
+                        "rejected",
+                        Some(&code),
+                    );
                     let _ = control_tx.send(
                         serde_json::json!({
                             "type": "terminalWriteNack",
@@ -3415,6 +3594,18 @@ async fn handle_ws(
                     );
                 }
                 Err(err) => {
+                    audit_ws_terminal_write(
+                        &write_state,
+                        &principal,
+                        &write_id,
+                        mode,
+                        control,
+                        client_id_present,
+                        ticket_authenticated,
+                        &bytes,
+                        "rejected",
+                        Some("terminal_write_error"),
+                    );
                     log::warn!("api: WS {} input rejected: {}", write_id, err);
                     let _ = control_tx.send(
                         serde_json::json!({

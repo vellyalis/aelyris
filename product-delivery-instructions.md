@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-8`.
-LAST COMPLETED SLICE: `AIO-7`.
-NEXT IMPLEMENTATION SLICE: `AIO-8`.
+ACTIVE SLICE: `AIO-9`.
+LAST COMPLETED SLICE: `AIO-8`.
+NEXT IMPLEMENTATION SLICE: `AIO-9`.
 
 ```yaml
 continuation_contract:
@@ -65,7 +65,8 @@ Current portfolio classification:
 | Authenticated Proofbook run-start identity | **COMPLETE** | MCP Proofbook starts now record the authenticated initiating Principal without changing deterministic run identity or input/definition hashes |
 | Authenticated mux input identity | **COMPLETE** | MCP and REST workspace input now carry the authenticated Principal through the shared terminal-write authority and payload-free audit |
 | Authenticated direct session input identity | **COMPLETE** | REST direct and synchronized session input now carry the authenticated Principal through the single authority and payload-free audit |
-| WebSocket ticket principal continuity | **NOW** | Writable stream tickets carry mode/control/client identity but do not yet bind the issuing authenticated Principal through redemption and writes |
+| WebSocket ticket principal continuity | **COMPLETE** | One-shot stream claims now preserve the issuing Principal through authorization, exclusive leases, write authority, and payload-free audit |
+| MCP pane-input lease and audit binding | **NOW** | MCP pane input carries its Principal into command risk, but it does not yet honor an active exclusive stream lease or emit the shared payload-free write audit |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -83,7 +84,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-7` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-8` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -861,7 +862,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` WebSocket attach/write where a single-use
 stream ticket preserves the authenticated issuing Principal through redemption,
 controller lease, terminal-write authority, and payload-free audit.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing stream-ticket issuer, `TicketRegistry`, `StreamTicketClaim`, auth
   middleware, `ws_session`, controller lease, and terminal-write authority. Do not add
@@ -883,6 +884,32 @@ Status: **ACTIVE**.
   in subsequent WebSocket write authority/audit evidence, while existing attach and
   controller semantics remain unchanged.
 
+### AIO-9 — Principal-Bound MCP Pane Input Lease And Audit
+
+Capability target: `Product-Accessible` AI pane input that cannot bypass an exclusive
+stream controller and leaves the same payload-free authority evidence as REST/WS input.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.pane_send_input` adapter, `StreamControllerLeases`,
+  `TerminalInputAuthority`, and shared programmatic terminal-write audit. Do not add a
+  PTY writer, command-risk gate, controller registry, actor parameter, or AI-only input
+  channel.
+- Preserve the authenticated MCP Principal already supplied by `tools_call`. Add only
+  an optional controller `clientId` needed to match an existing exclusive lease; it is
+  not identity and never substitutes for the authenticated Principal.
+- Before command classification or PTY mutation, call the existing lease owner with
+  terminal id, optional client id, and authenticated Principal. If another controller,
+  another Principal, or an omitted client id owns the exclusive lease, fail closed.
+- Preserve terminal short-id resolution, frame bounds, command-risk classification,
+  exact approval binding, waiting-approval fences, quarantine, typed NACK behavior, and
+  the existing Atomic MCP payload mode.
+- Reuse the shared payload-free audit owner. Record actor, terminal/target scope,
+  command hash, approval presence, result, and rejection code; never record raw input,
+  prompts, bearer values, controller credentials, or environment values.
+- Done: an authenticated AI can use MCP pane input only within the current controller
+  boundary, and both accepted and rejected writes are durably attributable without
+  exposing the submitted command.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -898,8 +925,9 @@ Principal-scoped MCP tool discovery `AIO-1`, runtime-owned Proofbook agent settl
 for AI `AIO-2`, and authenticated actor-bound Proofbook gate decisions `AIO-3` are
 also complete. Exact current Proofbook cancellation for AI `AIO-4` and authenticated
 Principal-bound Proofbook run start `AIO-5` are complete. Authenticated mux input
-identity `AIO-6` and authenticated direct REST session input identity `AIO-7` are
-complete. WebSocket stream-ticket Principal continuity `AIO-8` is active;
+identity `AIO-6`, authenticated direct REST session input identity `AIO-7`, and
+WebSocket stream-ticket Principal continuity `AIO-8` are complete. Principal-bound MCP
+pane-input lease and audit `AIO-9` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

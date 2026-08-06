@@ -110,23 +110,60 @@ fn registry_redeem_claim_preserves_exclusive_control() {
 }
 
 #[test]
+fn registry_redeem_claim_preserves_principal_and_single_use() {
+    let reg = TicketRegistry::new();
+    let principal = aelyris_lib::governance::Principal {
+        actor: "ticket-agent".to_string(),
+        tenant: "tenant-a".to_string(),
+        roles: vec!["stream-writer".to_string()],
+    };
+    let (ticket, _) = reg.issue_with_attach_for_principal(
+        "sess-a",
+        StreamMode::ReadWrite,
+        StreamControl::Exclusive,
+        Some("client-a".to_string()),
+        principal.clone(),
+    );
+
+    let claim = reg
+        .redeem_claim_for_session(&ticket, "sess-a")
+        .expect("principal-bound ticket should redeem once");
+
+    assert_eq!(claim.principal, principal);
+    assert_eq!(claim.client_id.as_deref(), Some("client-a"));
+    assert!(
+        reg.redeem_claim_for_session(&ticket, "sess-a").is_none(),
+        "principal-bound claim must remain single-use"
+    );
+}
+
+#[test]
 fn controller_lease_rejects_competing_client_until_release() {
     let leases = StreamControllerLeases::new();
-    leases.acquire("sess-a", "client-a").unwrap();
+    leases.acquire("sess-a", "client-a", "principal-a").unwrap();
     assert_eq!(leases.owner("sess-a").as_deref(), Some("client-a"));
+    assert_eq!(leases.principal("sess-a").as_deref(), Some("principal-a"));
     assert!(leases
-        .ensure_can_control("sess-a", Some("client-a"))
+        .ensure_can_control("sess-a", Some("client-a"), "principal-a")
         .is_ok());
-    assert!(leases.ensure_can_control("sess-a", None).is_err());
     assert!(leases
-        .ensure_can_control("sess-a", Some("client-b"))
+        .ensure_can_control("sess-a", None, "principal-a")
+        .is_err());
+    assert!(leases
+        .ensure_can_control("sess-a", Some("client-b"), "principal-a")
+        .is_err());
+    assert!(leases
+        .ensure_can_control("sess-a", Some("client-a"), "principal-b")
         .is_err());
     assert_eq!(
-        leases.acquire("sess-a", "client-b").unwrap_err(),
+        leases
+            .acquire("sess-a", "client-b", "principal-b")
+            .unwrap_err(),
         "client-a"
     );
-    assert!(leases.release("sess-a", "client-a"));
-    leases.acquire("sess-a", "client-b").unwrap();
+    assert!(!leases.release("sess-a", "client-a", "principal-b"));
+    assert!(leases.release("sess-a", "client-a", "principal-a"));
+    leases.acquire("sess-a", "client-b", "principal-b").unwrap();
     assert_eq!(leases.owner("sess-a").as_deref(), Some("client-b"));
 }
 
@@ -431,6 +468,174 @@ async fn ws_accepts_ticket_query_param() {
         .send()
         .await;
 
+    state.trigger_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+}
+
+#[cfg(target_os = "windows")]
+#[tokio::test]
+async fn ws_stream_ticket_preserves_issuing_principal_in_write_audit() {
+    use aelyris_lib::command_risk::gate::CommandRiskGate;
+    use aelyris_lib::db::{AuditJournalFilter, Database, ManagedDb};
+    use aelyris_lib::governance::{
+        AccessControl, AccessDecision, Governance, Principal, PrincipalResolver,
+    };
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    struct TicketPrincipalResolver;
+    impl PrincipalResolver for TicketPrincipalResolver {
+        fn resolve(&self, _credential: &str) -> Principal {
+            Principal {
+                actor: "ws-ticket-agent".to_string(),
+                tenant: "default".to_string(),
+                roles: vec!["stream-writer".to_string()],
+            }
+        }
+    }
+
+    struct TicketPrincipalOnly;
+    impl AccessControl for TicketPrincipalOnly {
+        fn authorize(&self, actor: &str, _capability: &str) -> AccessDecision {
+            if actor == "ws-ticket-agent" {
+                AccessDecision::Allow
+            } else {
+                AccessDecision::Deny("ticket principal continuity required".to_string())
+            }
+        }
+    }
+
+    let db = Arc::new(ManagedDb::new(Database::open_memory().expect("memory db")));
+    let gate = Arc::new(CommandRiskGate::new(Some(db.clone())));
+    let governance = Governance::with_access(Box::new(TicketPrincipalOnly))
+        .with_resolver(Box::new(TicketPrincipalResolver));
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token(TOKEN))
+        .with_rate_limiter(Arc::new(RateLimiter::unlimited()))
+        .with_governance(Arc::new(governance))
+        .with_db(Some(db.clone()))
+        .with_command_risk_gate(Some(gate));
+    let (base, state, join) = spawn(state).await;
+    let c = client();
+
+    let id: String = c
+        .post(format!("{}/sessions", base))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .json(&json!({"shell": "cmd", "cols": 80, "rows": 24}))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap()
+        .get("id")
+        .and_then(|value| value.as_str().map(ToString::to_string))
+        .expect("created session id");
+
+    let ticket_body: serde_json::Value = c
+        .post(format!(
+            "{}/sessions/{}/stream-ticket?control=exclusive&clientId=client-ticket-agent",
+            base, id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let ticket = ticket_body["ticket"]
+        .as_str()
+        .expect("ticket string")
+        .to_string();
+    for forbidden in ["actor", "principal", "tenant", "roles"] {
+        assert!(
+            ticket_body.get(forbidden).is_none(),
+            "ticket response exposed {forbidden}"
+        );
+    }
+
+    let ws_url = base.replacen("http://", "ws://", 1);
+    let url = format!("{}/sessions/{}/stream?ticket={}", ws_url, id, ticket);
+    let (mut ws, _response) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("principal-bound ticket upgrade");
+
+    assert_eq!(
+        state.controller_leases.owner(&id).as_deref(),
+        Some("client-ticket-agent")
+    );
+    assert_eq!(
+        state.controller_leases.principal(&id).as_deref(),
+        Some("ws-ticket-agent")
+    );
+    assert_eq!(state.tickets.live_count(), 0, "ticket was redeemed once");
+
+    const RAW_FRAME: &str = "git commit -m AIO8_RAW_FRAME_MUST_NOT_BE_LOGGED\r";
+    ws.send(Message::Text(RAW_FRAME.into()))
+        .await
+        .expect("send review-classified frame");
+    let mut nack = None;
+    for _ in 0..30 {
+        let Some(message) = tokio::time::timeout(Duration::from_millis(250), ws.next())
+            .await
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+        if let Ok(Message::Text(text)) = message {
+            let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+            if value["type"] == "terminalWriteNack" {
+                nack = Some(value);
+                break;
+            }
+        }
+    }
+    let nack = nack.expect("review-classified frame returns typed NACK");
+    assert_eq!(nack["nack"]["code"], "command_approval_required");
+
+    let rows = db
+        .with(|database| {
+            database.list_audit_journal_events(&AuditJournalFilter {
+                kind: Some("ws_session_input_authority".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            })
+        })
+        .expect("read WebSocket input audit");
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row.agent_id.as_deref(), Some("ws-ticket-agent"));
+    assert_eq!(row.redacted_payload_json["actor"], "ws-ticket-agent");
+    assert_eq!(row.redacted_payload_json["ticketAuthenticated"], true);
+    assert_eq!(row.redacted_payload_json["streamControl"], "exclusive");
+    assert_eq!(
+        row.redacted_payload_json["rejectionCode"],
+        "command_approval_required"
+    );
+    assert_eq!(row.redacted_payload_json["payloadLogged"], false);
+    let audit_text = serde_json::to_string(row).unwrap();
+    assert!(!audit_text.contains("AIO8_RAW_FRAME_MUST_NOT_BE_LOGGED"));
+    assert!(!audit_text.contains(&ticket));
+    assert!(!audit_text.contains(TOKEN));
+
+    ws.close(None).await.expect("close WebSocket");
+    for _ in 0..20 {
+        if state.controller_leases.owner(&id).is_none() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(
+        state.controller_leases.owner(&id).is_none(),
+        "exclusive controller lease is released with the stream"
+    );
+
+    let _ = c
+        .delete(format!("{}/sessions/{}", base, id))
+        .header(AUTHORIZATION, format!("Bearer {}", TOKEN))
+        .send()
+        .await;
     state.trigger_shutdown();
     let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
 }
