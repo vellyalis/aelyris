@@ -1251,6 +1251,164 @@ mod tests {
     }
 
     #[test]
+    fn mcp_file_ownership_assignment_audit_is_principal_bound_and_pattern_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::file_ownership::FileOwnership;
+        use crate::pty::PtyManager;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let ownership = Arc::new(std::sync::Mutex::new(FileOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_file_ownership(ownership.clone());
+        let schema = input_schema_for_tool_ref("aelyris.ownership.assign").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "ownership-operator",
+                ToolCallBody {
+                    name: "aelyris.ownership.assign".to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let first_agent = "AIO14_ASSIGNED_AGENT_A_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let first_pattern = "src/AIO14_PATTERN_A_MUST_NOT_BE_LOGGED/**";
+        let second_agent = "AIO14_ASSIGNED_AGENT_B_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let second_pattern = "src/AIO14_PATTERN_A_MUST_NOT_BE_LOGGED/file.rs";
+
+        let Json(first) = call(serde_json::json!({
+            "agentId": first_agent,
+            "pattern": first_pattern,
+        }))
+        .expect("first ownership assignment succeeds");
+        assert_eq!(first["result"]["conflicts"], serde_json::json!([]));
+
+        let Json(second) = call(serde_json::json!({
+            "agentId": second_agent,
+            "pattern": second_pattern,
+        }))
+        .expect("overlapping ownership assignment succeeds with conflict projection");
+        assert_eq!(
+            second["result"]["conflicts"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(ownership.lock().unwrap().claims().len(), 2);
+
+        let rejected_agent = "AIO14_REJECTED_ASSIGNEE_MUST_NOT_BE_LOGGED";
+        let rejected_pattern = "src/AIO14_REJECTED_PATTERN_MUST_NOT_BE_LOGGED/**";
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio14_file_ownership\n\
+                     BEFORE INSERT ON file_ownership_claims\n\
+                     WHEN NEW.agent_id = '{rejected_agent}'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated ownership persistence failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(serde_json::json!({
+                "agentId": rejected_agent,
+                "pattern": rejected_pattern,
+            })),
+            Err(ApiError::Internal(_))
+        ));
+        assert_eq!(
+            ownership.lock().unwrap().claims().len(),
+            2,
+            "failed persistence must not mutate the in-memory ownership owner"
+        );
+        let persisted_count = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row("SELECT COUNT(*) FROM file_ownership_claims", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(persisted_count, 2);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_file_ownership_assignment_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read file ownership assignment audit");
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("ownership-operator")));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            2
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            1
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["status"] == "accepted"
+                && row.redacted_payload_json["conflictCount"] == 0
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["status"] == "accepted"
+                && row.redacted_payload_json["conflictCount"] == 1
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "ownership_persistence_failed"
+                && row.redacted_payload_json["persistenceApplied"] == false
+                && row.redacted_payload_json["memoryApplied"] == false
+        }));
+        let digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["assignmentDigest"]
+                    .as_str()
+                    .expect("assignment digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(digests.len(), 3);
+        assert!(digests.iter().all(|digest| {
+            digest.len() == 64
+                && digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["assignmentValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                first_agent,
+                first_pattern,
+                second_agent,
+                second_pattern,
+                rejected_agent,
+                rejected_pattern,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

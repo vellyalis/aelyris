@@ -1049,6 +1049,143 @@ fn mcp_task_transition(
     }))
 }
 
+fn authenticated_file_ownership_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated file-ownership assignment Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn file_ownership_assignment_digest(agent_id: &str, pattern: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.file-ownership\nassign\n{agent_id}\n{pattern}"
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_file_ownership_assignment(
+    state: &ApiState,
+    actor: &str,
+    assignment_digest: &str,
+    conflict_count: Option<usize>,
+    status: &str,
+    rejection_code: Option<&str>,
+    persistence_applied: bool,
+    memory_applied: bool,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(assignment_digest.to_string()),
+        kind: "mcp_file_ownership_assignment_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-file-ownership-assignment".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": "assign",
+            "assignmentDigest": assignment_digest,
+            "conflictCount": conflict_count,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "persistenceApplied": persistence_applied,
+            "memoryApplied": memory_applied,
+            "assignmentValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, assignment_digest, error = %error, "file ownership assignment audit failed");
+    }
+}
+
+fn mcp_file_ownership_assign(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_file_ownership_actor(actor)?;
+    let ownership = state.file_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("file ownership is not attached to this process".to_string())
+    })?;
+    let agent_id = arg_string(args, "agentId")?;
+    let pattern = arg_string(args, "pattern")?;
+    let assignment_digest = file_ownership_assignment_digest(&agent_id, &pattern);
+    let claim = crate::file_ownership::OwnershipClaim::new(agent_id.clone(), pattern.clone());
+    if let Err(error) = ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::upsert_file_claim(database, &claim, now_secs())
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        audit_mcp_file_ownership_assignment(
+            state,
+            actor,
+            &assignment_digest,
+            None,
+            "rejected",
+            Some("ownership_persistence_failed"),
+            false,
+            false,
+        );
+        return Err(error);
+    }
+    let conflicts = match ownership.lock() {
+        Ok(mut owner) => {
+            owner.assign_claim(claim);
+            owner.conflicts()
+        }
+        Err(_) => {
+            audit_mcp_file_ownership_assignment(
+                state,
+                actor,
+                &assignment_digest,
+                None,
+                "rejected",
+                Some("ownership_memory_lock_failed"),
+                true,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "file ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    audit_mcp_file_ownership_assignment(
+        state,
+        actor,
+        &assignment_digest,
+        Some(conflicts.len()),
+        "accepted",
+        None,
+        true,
+        true,
+    );
+    Ok(serde_json::json!({
+        "agentId": agent_id,
+        "pattern": pattern,
+        "conflicts": conflicts,
+    }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -2767,28 +2904,7 @@ pub(super) async fn dispatch_authorized(
             serde_json::to_value(snapshot)
                 .map_err(|err| ApiError::Internal(format!("serialize shared brain: {err}")))?
         }
-        "aelyris.ownership.assign" => {
-            let ownership = state.file_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("file ownership is not attached to this process".to_string())
-            })?;
-            let agent_id = arg_string(&args, "agentId")?;
-            let pattern = arg_string(&args, "pattern")?;
-            let claim =
-                crate::file_ownership::OwnershipClaim::new(agent_id.clone(), pattern.clone());
-            ownership_db(&state)?
-                .with(|db| {
-                    crate::persistence::OwnershipRepo::upsert_file_claim(db, &claim, now_secs())
-                })
-                .map_err(ApiError::Internal)?;
-            let conflicts = {
-                let mut owner = ownership
-                    .lock()
-                    .map_err(|_| ApiError::Internal("file ownership lock poisoned".to_string()))?;
-                owner.assign_claim(claim);
-                owner.conflicts()
-            };
-            serde_json::json!({ "agentId": agent_id, "pattern": pattern, "conflicts": conflicts })
-        }
+        "aelyris.ownership.assign" => mcp_file_ownership_assign(&state, actor, &args)?,
         "aelyris.ownership.owner_of" => {
             let ownership = state.file_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("file ownership is not attached to this process".to_string())

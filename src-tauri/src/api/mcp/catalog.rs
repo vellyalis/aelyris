@@ -714,7 +714,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.ownership.assign",
-                "description": "Claim a path pattern for an agent (BR8) so parallel lanes never write the same files; returns the resulting cross-agent conflicts. Patterns: exact (src/main.rs), direct children (src/auth/*), recursive (src/auth/**).",
+                "description": "Assign a path pattern to an agent (BR8) as the authenticated Principal so parallel lanes never write the same files. `agentId` is the assignee, not the caller identity. Returns current conflicts; durable authority evidence stores only a one-way assignment digest and conflict count, never the assignee or pattern.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

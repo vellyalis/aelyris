@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-14`.
-LAST COMPLETED SLICE: `AIO-13`.
-NEXT IMPLEMENTATION SLICE: `AIO-14`.
+ACTIVE SLICE: `AIO-15`.
+LAST COMPLETED SLICE: `AIO-14`.
+NEXT IMPLEMENTATION SLICE: `AIO-15`.
 
 ```yaml
 continuation_contract:
@@ -71,7 +71,8 @@ Current portfolio classification:
 | MCP agent lifecycle actor evidence | **COMPLETE** | Headless/visible spawn and headless stop now retain authenticated, payload-free lifecycle evidence without changing runtime ownership |
 | MCP worktree mutation actor evidence | **COMPLETE** | Create/remove now retain authenticated, target-minimized evidence and remove the branch/name through the branch-aware Git owner |
 | MCP task mutation actor evidence | **COMPLETE** | Task create/transition now retain the authenticated initiating Principal separately from assignment metadata, using packet-free task digests and explicit Event Bus publication outcomes |
-| MCP file-ownership assignment evidence | **NOW** | AI can assign file-pattern ownership, but the assignee/pattern are caller-selected domain values and the authenticated initiating Principal is not retained separately |
+| MCP file-ownership assignment evidence | **COMPLETE** | File-pattern assignment now retains the authenticated initiating Principal separately from assignee/pattern values, using a target-minimized digest and persistence/memory outcome evidence |
+| MCP manual symbol-ownership mutation evidence | **NOW** | AI can claim, refresh, and release symbol ownership, but claim/agent/task/source fields are caller-selected domain values and the authenticated initiating Principal is not retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -89,7 +90,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-13` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-14` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1028,7 +1029,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` file-pattern ownership assignment whose
 initiating identity comes from the authenticated MCP Principal while the assigned
 agent remains domain metadata.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.ownership.assign` adapter, `FileOwnership`,
   `OwnershipRepo`, Governance, and durable audit journal. Do not add an ownership map,
@@ -1050,6 +1051,34 @@ Status: **ACTIVE**.
   is attributable without confusing the assigned agent with the caller or leaking the
   file pattern.
 
+### AIO-15 — Principal-Bound MCP Manual Symbol-Ownership Mutation Evidence
+
+Capability target: `Product-Accessible` manual symbol claim, refresh, and release whose
+initiating identity comes from the authenticated MCP Principal while claim ownership
+fields remain domain metadata.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.symbol.claim`, `aelyris.symbol.refresh`,
+  `aelyris.symbol.release`, and `aelyris.symbol.release_task` adapters,
+  `SymbolOwnership`, `OwnershipRepo`, Governance, and durable audit journal. Do not add
+  a symbol map, actor field, claim service, identity store, or AI-only ownership path.
+- Keep caller-supplied claim id, agent id, task id, path, symbol, range, mode,
+  confidence, and lease as claim-domain inputs. None may substitute for the
+  authenticated initiating Principal or be copied into actor evidence.
+- Preserve reserved derived-claim prefixes, path normalization, range/mode/confidence
+  validation, staged persistence-before-memory behavior, blocked-conflict outcomes,
+  lease refresh, release semantics, typed errors, and the existing symbol owner as the
+  sole mutation authority.
+- Retain accepted/rejected audit with actor, operation, outcome class/count when known,
+  mutation state, and stable one-way claim/target digests sufficient for correlation.
+  Do not persist raw claim/agent/task ids, paths, symbols, ranges, source text, conflict
+  payloads, bearer values, environment values, or repository contents.
+- Persistence or lock failure must remain explicit and must not be audited as accepted.
+  Do not replay a symbol mutation merely to obtain audit evidence.
+- Done: an authenticated AI can perform the existing manual symbol-ownership lifecycle,
+  and each effect is attributable without confusing claim ownership with caller
+  identity or leaking symbol targets.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -1070,8 +1099,9 @@ WebSocket stream-ticket Principal continuity `AIO-8` and Principal-bound MCP pan
 lease/audit `AIO-9` and Principal-bound MCP pane metadata control `AIO-10` are
 complete. Principal-bound MCP agent lifecycle evidence `AIO-11`, Principal-bound MCP
 worktree mutation evidence `AIO-12`, and Principal-bound MCP task mutation evidence
-`AIO-13` are also complete. Principal-bound MCP file-ownership assignment evidence
-`AIO-14` is active;
+`AIO-13` and Principal-bound MCP file-ownership assignment evidence `AIO-14` are also
+complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15` is
+active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

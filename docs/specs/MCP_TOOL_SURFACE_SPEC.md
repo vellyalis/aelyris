@@ -160,6 +160,15 @@ one-way task digest. If Event Bus publication fails after a durable Task Manager
 mutation, the call remains an explicit failure and the audit records that partial
 coordination state without replaying the mutation or copying the task/event payload.
 
+`aelyris.ownership.assign` preserves persistence-before-memory ordering in the existing
+`OwnershipRepo` and `FileOwnership` owners. The authenticated Principal is the
+initiating actor while caller-supplied `agentId` and `pattern` remain assignment-domain
+values. Durable authority evidence contains only the operation, result, conflict count,
+persistence/memory application state, and a stable one-way assignment digest. Raw
+assignee ids, patterns, paths, conflict payloads, bearer values, environment values, and
+repository contents are excluded, and a persistence or lock failure is never recorded
+as an accepted assignment or replayed for audit.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)
