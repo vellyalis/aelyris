@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-36`.
-LAST COMPLETED SLICE: `AIO-35`.
-NEXT IMPLEMENTATION SLICE: `AIO-36`.
+ACTIVE SLICE: `AIO-37`.
+LAST COMPLETED SLICE: `AIO-36`.
+NEXT IMPLEMENTATION SLICE: `AIO-37`.
 
 ```yaml
 continuation_contract:
@@ -93,7 +93,8 @@ Current portfolio classification:
 | MCP prompt-free fleet status | **COMPLETE** | Fleet coordination now uses a bounded projection that excludes prompts, approval text, repository/worktree paths, branch names, and full lineage contents |
 | MCP unified fleet coverage | **COMPLETE** | One deterministic prompt-free projection now merges headless and visible interactive owners, reports owner availability/counts, and fails closed on duplicate session identity |
 | MCP deterministic agent-activity read | **COMPLETE** | Typed headless activity now has stable session ordering, explicit owner availability/counts, and a read-only prompt-free projection boundary |
-| MCP value-minimized pending-decision read | **NOW** | The pending list currently returns approval summaries and full merge targets, branches, OIDs, task/session identity, and review evidence that coordination does not require |
+| MCP value-minimized pending-decision read | **COMPLETE** | Pending approvals retain exact decision identity/risk/state plus a session digest, while durable merge intents retain only exact intent identity/state/timestamps and evidence-presence flags |
+| MCP path-minimized worktree inventory | **NOW** | The current worktree list echoes the repository path and every absolute worktree path even though branch, HEAD, status, and worktree name are sufficient for coordination |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1612,7 +1613,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read-only pending-decision
 coordination without exposing approval text or merge targets.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.list_pending_approvals` over the existing bounded `mcp_pending` queue,
   durable `MergeIntentStore`, Governance, and principal-scoped discovery. Do not add a
@@ -1635,6 +1636,27 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can see which decisions require attention and target an
   exact durable intent without receiving prompts, summaries, repository targets, OIDs,
   or review evidence contents.
+
+### AIO-37 — MCP Path-Minimized Worktree Inventory
+
+Capability target: `Product-Accessible` authenticated read-only worktree coordination
+without echoing machine-local repository or worktree paths.
+Status: **ACTIVE**.
+
+- Keep `aelyris.worktree.list` over the existing `control::worktree::list`, Git
+  repository owner, Governance, and principal-scoped discovery. Do not add a worktree
+  registry, Git cache, path resolver, scanner, or second inventory model.
+- Keep `repoPath` as the transient lookup input, but return only each worktree's exact
+  name, branch, `is_main`, HEAD SHA, and status plus a stable one-way repository digest.
+  Do not echo the input repository path or serialize any absolute worktree path.
+- Preserve the existing main-worktree identity and Git-derived status. Return main
+  first and sort linked worktrees deterministically by exact name without creating,
+  pruning, locking, refreshing, or mutating a worktree.
+- Return explicit `source`, `repositoryPathExposed:false`,
+  `worktreePathsExposed:false`, and `readOnly:true` metadata. Invalid/unreadable Git
+  repositories remain typed failures rather than empty successful inventories.
+- Done: an authenticated AI can select an exact branch/worktree name for existing
+  authorized operations without receiving host-specific filesystem paths.
 
 ## Deferred After GMV
 
@@ -1675,7 +1697,8 @@ cost-cap updates `AIO-30`, MCP honest cost-admission preview `AIO-31`, and MCP
 prompt-minimized agent routing `AIO-32` are also complete. MCP prompt-free fleet status
 projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. MCP
 deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
-pending-decision read `AIO-36` is active;
+pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
+`AIO-37` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

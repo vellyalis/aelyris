@@ -468,7 +468,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.list_pending_approvals",
-                "description": "Observe pending approval requests and unresolved DURABLE merge intents (everything not yet merged/rejected). Read-only — it cannot resolve them. Returns { pending:[permission items], mergeIntents:[durable merge intents] }.",
+                "description": "Observe a value-minimized read-only projection of pending approval requests and unresolved durable merge intents. Keeps exact decision/intent ids, risk/state, timestamps, and presence flags while excluding approval text, session ids, repository targets, branches, OIDs, task/reviewer ids, and gate evidence contents.",
                 "safety": "GATED_OBSERVE_ONLY",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },

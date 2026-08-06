@@ -11,6 +11,7 @@ mod dispatch;
 mod event_ack;
 mod fleet_status;
 mod orchestrator_step;
+mod pending_decisions;
 mod proofbook_compat_mutations;
 mod proofbook_runtime_settlement;
 mod review_rejection;
@@ -1402,6 +1403,181 @@ mod tests {
             Err(ApiError::Forbidden(_))
         ));
         assert!(scoped_tool_names(&available, "blocked-activity-observer").is_empty());
+    }
+
+    #[test]
+    fn mcp_pending_decision_read_is_value_minimized_deterministic_and_read_only() {
+        use crate::db::{Database, ManagedDb};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::merge_intent::{store::MergeIntentStore, MergeIntent, MergeIntentState};
+        use crate::pty::PtyManager;
+
+        struct PendingPolicy;
+        impl AccessControl for PendingPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "decision-observer" && verb == "aelyris.list_pending_approvals" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        fn merge_intent(id: &str, suffix: &str, state: MergeIntentState) -> MergeIntent {
+            MergeIntent {
+                intent_id: id.to_string(),
+                repo_path: format!("C:/AIO36/REPOSITORY/{suffix}/MUST-NOT-BE-EXPOSED"),
+                source_branch: format!("AIO36_SOURCE_{suffix}_MUST_NOT_BE_EXPOSED"),
+                target_branch: format!("AIO36_TARGET_{suffix}_MUST_NOT_BE_EXPOSED"),
+                source_oid: format!("AIO36_SOURCE_OID_{suffix}_MUST_NOT_BE_EXPOSED"),
+                target_oid: format!("AIO36_TARGET_OID_{suffix}_MUST_NOT_BE_EXPOSED"),
+                merge_base_oid: Some(format!("AIO36_MERGE_BASE_{suffix}_MUST_NOT_BE_EXPOSED")),
+                task_id: format!("AIO36_TASK_{suffix}_MUST_NOT_BE_EXPOSED"),
+                created_at: if id.ends_with('a') { 10 } else { 20 },
+                state,
+                updated_at: if id.ends_with('a') { 11 } else { 21 },
+                session_id: Some(format!("AIO36_SESSION_{suffix}_MUST_NOT_BE_EXPOSED")),
+                reviewer_id: Some(format!("AIO36_REVIEWER_{suffix}_MUST_NOT_BE_EXPOSED")),
+                gates_digest: Some(format!("AIO36_GATES_{suffix}_MUST_NOT_BE_EXPOSED")),
+            }
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let store = Arc::new(MergeIntentStore::new(db));
+        store
+            .create_or_get(&merge_intent("merge-z", "Z", MergeIntentState::Reviewing))
+            .unwrap();
+        store
+            .create_or_get(&merge_intent("merge-a", "A", MergeIntentState::Queued))
+            .unwrap();
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_merge_store(Some(store.clone()))
+            .with_governance(Arc::new(Governance::with_access(Box::new(PendingPolicy))));
+        {
+            let mut queue = state.mcp_pending.lock().unwrap();
+            queue.push(McpPendingDecision {
+                id: "approval-b".to_string(),
+                session_id: "AIO36_SESSION_B_MUST_NOT_BE_EXPOSED".to_string(),
+                kind: "permission_required".to_string(),
+                title: "AIO36_TITLE_B_MUST_NOT_BE_EXPOSED".to_string(),
+                summary: Some("AIO36_SUMMARY_B_MUST_NOT_BE_EXPOSED".to_string()),
+                risk: "high".to_string(),
+                status: "pending".to_string(),
+            });
+            queue.push(McpPendingDecision {
+                id: "approval-a".to_string(),
+                session_id: "AIO36_SESSION_A_MUST_NOT_BE_EXPOSED".to_string(),
+                kind: "permission_required".to_string(),
+                title: "AIO36_TITLE_A_MUST_NOT_BE_EXPOSED".to_string(),
+                summary: Some("AIO36_SUMMARY_A_MUST_NOT_BE_EXPOSED".to_string()),
+                risk: "medium".to_string(),
+                status: "pending".to_string(),
+            });
+            queue.push(McpPendingDecision {
+                id: "approval-resolved".to_string(),
+                session_id: "AIO36_RESOLVED_SESSION_MUST_NOT_BE_EXPOSED".to_string(),
+                kind: "permission_required".to_string(),
+                title: "AIO36_RESOLVED_TITLE_MUST_NOT_BE_EXPOSED".to_string(),
+                summary: None,
+                risk: "low".to_string(),
+                status: "resolved".to_string(),
+            });
+        }
+
+        let schema = input_schema_for_tool_ref("aelyris.list_pending_approvals").unwrap();
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(
+            scoped_tool_names(&state, "decision-observer"),
+            ["aelyris.list_pending_approvals"]
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.list_pending_approvals".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            ))
+        };
+        let Json(value) = call(&state, "decision-observer").expect("pending projection");
+        let result = &value["result"];
+        assert_eq!(result["pendingQueueAvailable"], true);
+        assert_eq!(result["mergeStoreAvailable"], true);
+        assert_eq!(result["pendingCount"], 2);
+        assert_eq!(result["mergeIntentCount"], 2);
+        assert_eq!(result["pending"][0]["id"], "approval-b");
+        assert_eq!(result["pending"][1]["id"], "approval-a");
+        assert_eq!(result["pending"][0]["risk"], "high");
+        assert_eq!(result["pending"][1]["risk"], "medium");
+        assert_eq!(result["mergeIntents"][0]["intentId"], "merge-a");
+        assert_eq!(result["mergeIntents"][0]["state"], "queued");
+        assert_eq!(result["mergeIntents"][1]["intentId"], "merge-z");
+        assert_eq!(result["mergeIntents"][1]["state"], "reviewing");
+        assert_eq!(result["mergeIntents"][0]["requestorPresent"], true);
+        assert_eq!(result["mergeIntents"][0]["reviewerPresent"], true);
+        assert_eq!(result["mergeIntents"][0]["gateEvidencePresent"], true);
+        assert_eq!(result["decisionValuesExposed"], false);
+        assert_eq!(result["mergeTargetsExposed"], false);
+        assert_eq!(result["grantToolExposed"], false);
+        assert_eq!(result["readOnly"], true);
+        for pending in result["pending"].as_array().unwrap() {
+            assert!(pending.get("title").is_none());
+            assert!(pending.get("summary").is_none());
+            assert!(pending.get("sessionId").is_none());
+            let digest = pending["sessionDigest"].as_str().unwrap();
+            assert_eq!(digest.len(), 64);
+            assert!(digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+        }
+        for intent in result["mergeIntents"].as_array().unwrap() {
+            for field in [
+                "repoPath",
+                "sourceBranch",
+                "targetBranch",
+                "sourceOid",
+                "targetOid",
+                "mergeBaseOid",
+                "taskId",
+                "sessionId",
+                "reviewerId",
+                "gatesDigest",
+            ] {
+                assert!(intent.get(field).is_none(), "unexpected field: {field}");
+            }
+        }
+        let response_text = serde_json::to_string(result).unwrap();
+        for hidden in [
+            "MUST_NOT_BE_EXPOSED",
+            "MUST-NOT-BE-EXPOSED",
+            "AIO36_TITLE",
+            "AIO36_SUMMARY",
+            "AIO36_REPOSITORY",
+            "AIO36_SOURCE_OID",
+        ] {
+            assert!(!response_text.contains(hidden), "response exposed {hidden}");
+        }
+        assert_eq!(state.mcp_pending.lock().unwrap().len(), 3);
+        assert_eq!(store.list_unresolved().unwrap().len(), 2);
+
+        let no_store = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(PendingPolicy))));
+        let Json(no_store_value) =
+            call(&no_store, "decision-observer").expect("missing merge owner is explicit");
+        assert_eq!(no_store_value["result"]["mergeStoreAvailable"], false);
+        assert_eq!(no_store_value["result"]["mergeIntentCount"], 0);
+        assert_eq!(
+            no_store_value["result"]["mergeIntents"],
+            serde_json::json!([])
+        );
+        assert!(matches!(
+            call(&state, "blocked-decision-observer"),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&state, "blocked-decision-observer").is_empty());
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {

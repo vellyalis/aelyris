@@ -4077,28 +4077,7 @@ pub(super) async fn dispatch_authorized(
             mcp_proofbook_decide_gate(&state, actor, &args, "reject")?
         }
         "aelyris.request_approval" => super::approval_request::request(&state, actor, &args)?,
-        "aelyris.list_pending_approvals" => {
-            let pending = state
-                .mcp_pending
-                .lock()
-                .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?
-                .iter()
-                .filter(|item| item.status == "pending")
-                .cloned()
-                .collect::<Vec<_>>();
-            // Durable merge intents awaiting a decision are synthesized from the
-            // store (their source of truth), NOT from `mcp_pending`. A read with no
-            // store attached simply shows none (a read can never cause a merge).
-            let merge_intents = match state.merge_store.as_ref() {
-                Some(store) => store.list_unresolved().map_err(ApiError::Internal)?,
-                None => Vec::new(),
-            };
-            serde_json::json!({
-                "pending": pending,
-                "mergeIntents": merge_intents,
-                "grantToolExposed": false,
-            })
-        }
+        "aelyris.list_pending_approvals" => super::pending_decisions::get(&state)?,
         "aelyris.approval.resolve" => {
             return super::approval_resolution::resolve(&state, actor, &args).await;
         }
