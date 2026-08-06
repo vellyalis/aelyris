@@ -167,7 +167,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.fleet_status",
-                "description": "Read the unified native-owned agent fleet snapshot.",
+                "description": "Read a prompt-free, path-free projection of the native-owned agent fleet. Exact session identity and coordination status remain available, while prompts, approval text, and machine-local repository/worktree paths are excluded.",
                 "safety": "FREE",
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },

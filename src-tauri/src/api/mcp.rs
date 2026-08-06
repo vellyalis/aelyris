@@ -8,6 +8,7 @@ mod catalog;
 mod cost_caps;
 mod dispatch;
 mod event_ack;
+mod fleet_status;
 mod orchestrator_step;
 mod proofbook_compat_mutations;
 mod proofbook_runtime_settlement;
@@ -1075,6 +1076,125 @@ mod tests {
             Err(ApiError::Forbidden(_))
         ));
         assert!(scoped_tool_names(&state, "blocked-router").is_empty());
+    }
+
+    #[test]
+    fn mcp_fleet_status_is_principal_scoped_prompt_and_path_free() {
+        use crate::agent::{AgentManager, AgentSession, AgentSessionInfo, SessionLineageEntry};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct FleetPolicy;
+        impl AccessControl for FleetPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "fleet-observer" && verb == "aelyris.fleet_status" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let prompt = "AIO33_PRIVATE_AGENT_PROMPT_MUST_NOT_BE_EXPOSED";
+        let approval = "AIO33_APPROVAL_TEXT_MUST_NOT_BE_EXPOSED";
+        let cwd = "C:/AIO33/PRIVATE/REPOSITORY/PATH";
+        let worktree = "C:/AIO33/PRIVATE/WORKTREE/PATH";
+        let branch = "AIO33_PRIVATE_WORKTREE_BRANCH";
+        let mut session = AgentSession::from(AgentSessionInfo {
+            id: "session-aio33".to_string(),
+            status: "coding".to_string(),
+            model: "claude-sonnet".to_string(),
+            prompt: prompt.to_string(),
+            cwd: cwd.to_string(),
+            cost: 1.25,
+            tokens_used: 12_345,
+            started_at: 77,
+            task_id: None,
+            execution_identity: None,
+            current_activity: None,
+        });
+        session.logical_session_id = Some("logical-aio33".to_string());
+        session.approval_prompt = Some(approval.to_string());
+        session.repo_path = Some(cwd.to_string());
+        session.worktree_path = Some(worktree.to_string());
+        session.worktree_branch = Some(branch.to_string());
+        session.predecessor_session_id = Some("session-before-aio33".to_string());
+        session.lineage = vec![SessionLineageEntry::unresolved(
+            "logical-before-aio33".to_string(),
+        )];
+
+        let projected = serde_json::to_value(fleet_status::project_session(session)).unwrap();
+        assert_eq!(projected["id"], "session-aio33");
+        assert_eq!(projected["logicalSessionId"], "logical-aio33");
+        assert_eq!(projected["runMode"], "headless");
+        assert_eq!(projected["status"], "coding");
+        assert_eq!(projected["model"], "claude-sonnet");
+        assert_eq!(projected["cost"], 1.25);
+        assert_eq!(projected["tokensUsed"], 12_345);
+        assert_eq!(projected["approvalPending"], true);
+        assert_eq!(projected["worktreeAttached"], true);
+        assert_eq!(projected["repositoryAttached"], true);
+        assert_eq!(projected["lineageCount"], 1);
+        for field in [
+            "prompt",
+            "approvalPrompt",
+            "cwd",
+            "workspaceScope",
+            "repoPath",
+            "worktreePath",
+            "worktreeBranch",
+            "lineage",
+            "recycleStatus",
+        ] {
+            assert!(projected.get(field).is_none(), "unexpected field: {field}");
+        }
+        let projected_text = serde_json::to_string(&projected).unwrap();
+        for hidden in [prompt, approval, cwd, worktree, branch] {
+            assert!(
+                !projected_text.contains(hidden),
+                "fleet projection exposed {hidden}"
+            );
+        }
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_agent_manager(AgentManager::new())
+            .with_governance(Arc::new(Governance::with_access(Box::new(FleetPolicy))));
+        assert_eq!(
+            scoped_tool_names(&state, "fleet-observer"),
+            ["aelyris.fleet_status"]
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let Json(value) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "fleet-observer",
+                ToolCallBody {
+                    name: "aelyris.fleet_status".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            ))
+            .expect("authorized fleet projection");
+        let result = &value["result"];
+        assert_eq!(result["available"], true);
+        assert_eq!(result["source"], "rust-agent-manager");
+        assert_eq!(result["sessions"], serde_json::json!([]));
+        assert_eq!(result["telemetryBoundary"], "reported_aelyris_telemetry");
+        assert_eq!(result["providerBillingClaimed"], false);
+        assert_eq!(result["promptValuesExposed"], false);
+        assert_eq!(result["workspacePathsExposed"], false);
+        assert_eq!(result["readOnly"], true);
+        assert!(matches!(
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "blocked-observer",
+                ToolCallBody {
+                    name: "aelyris.fleet_status".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+            )),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&state, "blocked-observer").is_empty());
     }
 
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {

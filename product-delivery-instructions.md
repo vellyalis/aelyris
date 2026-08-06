@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-33`.
-LAST COMPLETED SLICE: `AIO-32`.
-NEXT IMPLEMENTATION SLICE: `AIO-33`.
+ACTIVE SLICE: `AIO-34`.
+LAST COMPLETED SLICE: `AIO-33`.
+NEXT IMPLEMENTATION SLICE: `AIO-34`.
 
 ```yaml
 continuation_contract:
@@ -90,7 +90,8 @@ Current portfolio classification:
 | MCP conflict-safe cost-cap updates | **COMPLETE** | Exact expected/replacement caps are compared and persisted under the shared manager lock, with stale writes and raw cap audit rejected |
 | MCP honest cost-admission preview | **COMPLETE** | AI asks the shared Cost Manager for the next-spawn decision; enabled cap axes with unknown telemetry return an explicit non-decision rather than zero-filled usage |
 | MCP prompt-minimized agent routing | **COMPLETE** | The shared router returns only its model-profile decision and explicit read-only metadata; the caller prompt is no longer reflected |
-| MCP prompt-free fleet status | **NOW** | The current fleet tool serializes the full AgentSession shape, including prompts and local workspace paths that AI coordination does not require |
+| MCP prompt-free fleet status | **COMPLETE** | Fleet coordination now uses a bounded projection that excludes prompts, approval text, repository/worktree paths, branch names, and full lineage contents |
+| MCP unified fleet coverage | **NOW** | The safe projection currently reads the headless Agent Manager only, so visible interactive sessions are absent from AI fleet coordination |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1541,7 +1542,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated read-only fleet coordination
 without exposing Agent prompts or local workspace paths.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `aelyris.fleet_status` over the existing `AgentManager`, `AgentSession`
   conversion, Governance, and principal-scoped discovery. Do not add a fleet store,
@@ -1558,6 +1559,29 @@ Status: **ACTIVE**.
   billing truth or convert unknown telemetry into known values.
 - Done: an authenticated AI can coordinate against the current fleet without receiving
   prompts, approval text, or machine-local repository/worktree paths.
+
+### AIO-34 — MCP Unified Fleet Coverage
+
+Capability target: `Product-Accessible` authenticated read-only coordination across
+both headless and visible interactive Aelyris agents through one prompt-free projection.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.fleet_status` adapter over the existing `AgentManager`,
+  `InteractiveSessionManager`, `AgentSession::from` conversions, Governance, and the
+  AIO-33 safe projection. Do not add a fleet manager, session registry, synchronization
+  owner, polling loop, or second lifecycle model.
+- Merge current headless and interactive snapshots without mutating either owner. Keep
+  exact session ids and run modes, preserve each owner's current status/usage values,
+  and return deterministic ordering. Duplicate ids must fail closed or be represented
+  once by an explicit deterministic rule rather than silently producing ambiguity.
+- Preserve AIO-33 exclusions for prompts, approval text, cwd/workspace/repository/
+  worktree paths, branch names, full lineage, and recycle failure contents. Do not
+  convert unavailable owners into invented sessions or known telemetry.
+- Expose `headlessAvailable`, `interactiveAvailable`, per-runtime counts, and one
+  combined `sessions` projection. Reading fleet status must not reap, stop, resume,
+  refresh, or otherwise change either runtime.
+- Done: an authenticated AI sees the same two runtime classes the operator coordinates,
+  through one safe identity/status projection and without a second fleet authority.
 
 ## Deferred After GMV
 
@@ -1596,7 +1620,7 @@ bound MCP runtime-owned Proofbook settlement evidence `AIO-28` is also complete.
 cost-cap read access `AIO-29` is also complete. Principal-bound conflict-safe MCP
 cost-cap updates `AIO-30`, MCP honest cost-admission preview `AIO-31`, and MCP
 prompt-minimized agent routing `AIO-32` are also complete. MCP prompt-free fleet status
-projection `AIO-33` is active;
+projection `AIO-33` is also complete. MCP unified fleet coverage `AIO-34` is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

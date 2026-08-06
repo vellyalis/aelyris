@@ -3877,18 +3877,7 @@ pub(super) async fn dispatch_authorized(
                 }
             }
         }
-        "aelyris.fleet_status" => {
-            let sessions = state
-                .agent_manager
-                .as_ref()
-                .map(crate::control::agent::list_headless)
-                .unwrap_or_default();
-            serde_json::json!({
-                "available": state.agent_manager.is_some(),
-                "source": "rust-agent-manager",
-                "sessions": sessions,
-            })
-        }
+        "aelyris.fleet_status" => super::fleet_status::get(&state),
         "aelyris.cost.get_caps" => super::cost_caps::get(&state)?,
         "aelyris.cost.set_caps" => super::cost_caps::set(&state, actor, &args)?,
         "aelyris.cost.can_spawn" => super::cost_caps::can_spawn(&state, &args)?,
