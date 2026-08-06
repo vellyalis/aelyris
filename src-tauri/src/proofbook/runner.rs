@@ -552,7 +552,7 @@ impl ProofbookRunner {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let ledger = self.load_run(&root, run_id)?;
         let expected_revision = ledger.revision;
-        self.cancel_loaded_run(&root, ledger, expected_revision)
+        self.cancel_loaded_run(&root, ledger, expected_revision, None)
     }
 
     pub fn cancel_run_if_current(
@@ -563,7 +563,26 @@ impl ProofbookRunner {
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         let root = crate::proofbook::validator::canonical_project_root(project_path)?;
         let ledger = self.load_run(&root, run_id)?;
-        self.cancel_loaded_run(&root, ledger, expected_revision)
+        self.cancel_loaded_run(&root, ledger, expected_revision, None)
+    }
+
+    pub fn cancel_run_if_current_as_actor(
+        &self,
+        project_path: &str,
+        run_id: &str,
+        expected_revision: u64,
+        actor: &str,
+    ) -> Result<ProofbookRunLedger, ProofbookError> {
+        let actor = actor.trim();
+        if actor.is_empty() {
+            return Err(ProofbookError::new(
+                ProofbookErrorCode::ValidationFailed,
+                "Proofbook cancellation actor must be non-empty",
+            ));
+        }
+        let root = crate::proofbook::validator::canonical_project_root(project_path)?;
+        let ledger = self.load_run(&root, run_id)?;
+        self.cancel_loaded_run(&root, ledger, expected_revision, Some(actor))
     }
 
     fn cancel_loaded_run(
@@ -571,6 +590,7 @@ impl ProofbookRunner {
         root: &Path,
         mut ledger: ProofbookRunLedger,
         expected_revision: u64,
+        actor: Option<&str>,
     ) -> Result<ProofbookRunLedger, ProofbookError> {
         if ledger.revision != expected_revision {
             return Err(stale_revision_error(
@@ -606,11 +626,15 @@ impl ProofbookRunner {
                 step.completed_at = Some(completed_at.clone());
             }
         }
-        ledger.append_event(
+        let message = actor
+            .map(|actor| format!("Proofbook run cancelled by {actor}"))
+            .unwrap_or_else(|| "Proofbook run cancelled by operator".to_string());
+        ledger.append_event_with_actor(
             "run_cancelled",
             None,
-            "Proofbook run cancelled by operator",
+            message,
             Some("cancelled".to_string()),
+            actor.map(str::to_string),
             None,
         );
         self.commit_ledger(root, &mut ledger)?;

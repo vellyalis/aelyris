@@ -285,7 +285,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 85] = [
+    const FROZEN_A64_VERBS: [&str; 86] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -314,6 +314,7 @@ mod tests {
         "aelyris.proofbook.agent_session_candidate",
         "aelyris.proofbook.settle_current_agent_session",
         "aelyris.proofbook.cancel",
+        "aelyris.proofbook.cancel_current",
         "aelyris.proofbook.approve_gate",
         "aelyris.proofbook.reject_gate",
         "aelyris.request_approval",
@@ -926,6 +927,7 @@ mod tests {
             ("aelyris.proofbook.agent_session_candidate", "FREE"),
             ("aelyris.proofbook.settle_current_agent_session", "GATED"),
             ("aelyris.proofbook.cancel", "GATED"),
+            ("aelyris.proofbook.cancel_current", "GATED"),
             ("aelyris.proofbook.approve_gate", "GATED"),
             ("aelyris.proofbook.reject_gate", "GATED"),
         ];
@@ -991,6 +993,14 @@ mod tests {
                     "stepId": "agent",
                     "expectedRevision": 1,
                     "expectedSessionId": "session-1",
+                }),
+            ),
+            (
+                "aelyris.proofbook.cancel_current",
+                serde_json::json!({
+                    "projectPath": "C:/repo",
+                    "runId": "run-1",
+                    "expectedRevision": 1,
                 }),
             ),
         ] {
@@ -1145,6 +1155,155 @@ settlement:
     }
 
     #[test]
+    fn proofbook_cancel_current_is_revision_pinned_actor_bound_and_claim_safe() {
+        use crate::db::AuditJournalFilter;
+        use crate::proofbook::{ProofbookRunStatus, ProofbookStepStatus};
+        use crate::pty::PtyManager;
+
+        let project = tempfile::tempdir().expect("tempdir");
+        let proofbook = write_test_proofbook(
+            project.path(),
+            r#"
+schema: aelyris.proofbook.v1
+id: aio4-exact-current-cancel
+steps:
+  - id: hold
+    type: manualGate
+    gateId: aio4-hold
+    options: [approve, reject]
+    default: reject
+    risk: medium
+settlement:
+  requiredSteps: [hold]
+"#,
+        );
+        let project_path = project.path().to_string_lossy().to_string();
+        let runner = crate::proofbook::ProofbookRunner::new();
+        let waiting = runner
+            .start_run(&project_path, &proofbook, serde_json::json!({}))
+            .expect("waiting Proofbook run");
+        assert_eq!(waiting.status, ProofbookRunStatus::WaitingGate);
+        let db = test_db();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_proofbook_runner(runner.clone())
+            .with_db(Some(db.clone()));
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+
+        let Json(schema_rejected) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "cancel-agent",
+                ToolCallBody {
+                    name: "aelyris.proofbook.cancel_current".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project_path,
+                        "runId": waiting.run_id,
+                        "expectedRevision": waiting.revision,
+                        "actor": "operator",
+                    }),
+                },
+            ))
+            .expect("caller-authored actor is a schema tool error");
+        assert_eq!(schema_rejected["ok"], false);
+        assert_eq!(
+            schema_rejected["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["actor"])
+        );
+
+        let stale = rt.block_on(tools_call_as_actor(
+            &state,
+            "cancel-agent",
+            ToolCallBody {
+                name: "aelyris.proofbook.cancel_current".to_string(),
+                arguments: serde_json::json!({
+                    "projectPath": project_path,
+                    "runId": waiting.run_id,
+                    "expectedRevision": waiting.revision + 1,
+                }),
+            },
+        ));
+        assert!(matches!(
+            stale,
+            Err(ApiError::BadRequest(message)) if message.contains("StaleLedgerRevision")
+        ));
+        let unchanged = runner
+            .status(&project_path, &waiting.run_id)
+            .expect("stale cancellation leaves the run unchanged");
+        assert_eq!(unchanged.revision, waiting.revision);
+        assert_eq!(unchanged.status, ProofbookRunStatus::WaitingGate);
+        assert!(unchanged
+            .events
+            .iter()
+            .all(|event| event.kind != "run_cancelled"));
+
+        let Json(cancelled) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "cancel-agent",
+                ToolCallBody {
+                    name: "aelyris.proofbook.cancel_current".to_string(),
+                    arguments: serde_json::json!({
+                        "projectPath": project_path,
+                        "runId": waiting.run_id,
+                        "expectedRevision": waiting.revision,
+                    }),
+                },
+            ))
+            .expect("exact current cancellation");
+        let cancelled: crate::proofbook::ProofbookRunLedger =
+            serde_json::from_value(cancelled["result"].clone()).expect("cancelled ledger");
+        assert_eq!(cancelled.status, ProofbookRunStatus::Cancelled);
+        assert_eq!(cancelled.revision, waiting.revision + 1);
+        assert_eq!(cancelled.steps[0].status, ProofbookStepStatus::Cancelled);
+        let event = cancelled
+            .events
+            .iter()
+            .find(|event| event.kind == "run_cancelled")
+            .expect("durable cancellation event");
+        assert_eq!(event.actor.as_deref(), Some("cancel-agent"));
+        assert!(event.message.contains("cancel-agent"));
+
+        let audits = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("proofbook_current_run_cancelled".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read cancellation audit");
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].agent_id.as_deref(), Some("cancel-agent"));
+        assert_eq!(audits[0].correlation_id, waiting.run_id);
+        assert_eq!(
+            audits[0].redacted_payload_json["externalProcessTerminationClaimed"],
+            false
+        );
+
+        let terminal = rt.block_on(tools_call_as_actor(
+            &state,
+            "cancel-agent",
+            ToolCallBody {
+                name: "aelyris.proofbook.cancel_current".to_string(),
+                arguments: serde_json::json!({
+                    "projectPath": project_path,
+                    "runId": cancelled.run_id,
+                    "expectedRevision": cancelled.revision,
+                }),
+            },
+        ));
+        assert!(matches!(
+            terminal,
+            Err(ApiError::BadRequest(message)) if message.contains("RunNotCancellable")
+        ));
+        let current = runner
+            .status(&project_path, &cancelled.run_id)
+            .expect("terminal cancellation leaves history unchanged");
+        assert_eq!(current.revision, cancelled.revision);
+        assert_eq!(current.status, ProofbookRunStatus::Cancelled);
+    }
+
+    #[test]
     fn a4_12_proofbook_mcp_status_dispatch_remains_available_while_startup_is_blocked() {
         let project = tempfile::tempdir().expect("tempdir");
         let proofbook = write_test_proofbook(
@@ -1232,6 +1391,15 @@ settlement:
                         "stepId": "step-fixture",
                         "expectedRevision": 1,
                         "expectedSessionId": "session-fixture",
+                    }),
+                ),
+                (
+                    "aelyris.proofbook.cancel_current",
+                    "Proofbook MCP exact current cancellation",
+                    serde_json::json!({
+                        "projectPath": "C:/a4-admission-fixture",
+                        "runId": "run-fixture",
+                        "expectedRevision": 1,
                     }),
                 ),
                 (

@@ -1073,6 +1073,21 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.proofbook.cancel_current",
+        "description": "Cancel only the exact nonterminal Proofbook revision the authenticated principal observed. Stale revisions and terminal runs fail closed. This changes the ledger only and does not claim PTY or agent-process termination.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["projectPath", "runId", "expectedRevision"],
+            "properties": {
+                "projectPath": { "type": "string" },
+                "runId": { "type": "string" },
+                "expectedRevision": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.proofbook.agent_session_candidate",
         "description": "Read the exact current runtime-owned settlement candidate for one running Proofbook agentSession. Returns no caller-authored proof fields.",
         "safety": "FREE",

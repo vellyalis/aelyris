@@ -720,6 +720,80 @@ fn mcp_proofbook_cancel(
     mcp_result_value(ledger)
 }
 
+fn mcp_proofbook_cancel_current(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    require_mcp_proofbook_effect_admitted(state, "Proofbook MCP exact current cancellation")?;
+    let actor = actor.trim();
+    if actor.is_empty() {
+        return Err(ApiError::Forbidden(
+            "authenticated Proofbook cancellation actor is unavailable".to_string(),
+        ));
+    }
+    let runner = mcp_proofbook_runner(state)?;
+    let project_path = arg_string(args, "projectPath")?;
+    let run_id = arg_string(args, "runId")?;
+    let expected_revision = arg_u64(args, "expectedRevision")?;
+    let ledger = runner
+        .cancel_run_if_current_as_actor(&project_path, &run_id, expected_revision, actor)
+        .map_err(proofbook_error_to_api)?;
+    audit_proofbook_current_cancellation(
+        state,
+        actor,
+        &project_path,
+        &run_id,
+        expected_revision,
+        &ledger,
+    );
+    #[cfg(not(test))]
+    if let Some(app) = state.app_handle.as_ref() {
+        let _ = app.emit("proofbook-updated", &ledger);
+    }
+    mcp_result_value(ledger)
+}
+
+fn audit_proofbook_current_cancellation(
+    state: &ApiState,
+    actor: &str,
+    project_path: &str,
+    run_id: &str,
+    expected_revision: u64,
+    ledger: &crate::proofbook::ProofbookRunLedger,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(run_id.to_string()),
+        kind: "proofbook_current_run_cancelled".to_string(),
+        severity: "warning".to_string(),
+        source: "mcp".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "projectPath": project_path,
+            "runId": run_id,
+            "expectedRevision": expected_revision,
+            "committedRevision": ledger.revision,
+            "status": ledger.status,
+            "actor": actor,
+            "externalProcessTerminationClaimed": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(run_id, actor, error = %error, "Proofbook cancellation audit failed");
+    }
+}
+
 fn mcp_proofbook_decide_gate(
     state: &ApiState,
     caller_actor: &str,
@@ -1492,6 +1566,7 @@ pub(super) async fn dispatch_authorized(
             mcp_proofbook_settle_current_agent_session(&state, &args)?
         }
         "aelyris.proofbook.cancel" => mcp_proofbook_cancel(&state, &args)?,
+        "aelyris.proofbook.cancel_current" => mcp_proofbook_cancel_current(&state, actor, &args)?,
         "aelyris.proofbook.approve_gate" => {
             mcp_proofbook_decide_gate(&state, actor, &args, "approve")?
         }

@@ -110,6 +110,8 @@ pub struct ProofbookRunEvent {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub actor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub error: Option<ProofbookRunError>,
 }
 
@@ -207,6 +209,18 @@ impl ProofbookRunLedger {
         status: Option<String>,
         error: Option<ProofbookRunError>,
     ) {
+        self.append_event_with_actor(kind, step_id, message, status, None, error);
+    }
+
+    pub fn append_event_with_actor(
+        &mut self,
+        kind: impl Into<String>,
+        step_id: Option<String>,
+        message: impl Into<String>,
+        status: Option<String>,
+        actor: Option<String>,
+        error: Option<ProofbookRunError>,
+    ) {
         self.updated_at = now_timestamp();
         self.events.push(ProofbookRunEvent {
             id: format!("evt-{:04}", self.events.len() + 1),
@@ -215,6 +229,7 @@ impl ProofbookRunLedger {
             step_id,
             message: message.into(),
             status,
+            actor,
             error,
         });
     }
@@ -560,7 +575,13 @@ mod tests {
             "updatedAt": "1",
             "definitionHash": "sha256:def",
             "inputHash": "sha256:input",
-            "events": [],
+            "events": [{
+                "id": "evt-0001",
+                "at": "1",
+                "kind": "run_cancelled",
+                "message": "legacy event without actor",
+                "status": "cancelled"
+            }],
             "steps": [],
             "artifacts": [],
             "decisions": [],
@@ -568,5 +589,6 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(ledger.revision, 0);
+        assert_eq!(ledger.events[0].actor, None);
     }
 }
