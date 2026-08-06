@@ -1186,6 +1186,468 @@ fn mcp_file_ownership_assign(
     }))
 }
 
+fn authenticated_symbol_actor(actor: &str) -> ApiResult<&str> {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        Err(ApiError::Forbidden(
+            "authenticated symbol-ownership mutation Principal is unavailable".to_string(),
+        ))
+    } else {
+        Ok(actor)
+    }
+}
+
+fn symbol_target_digest(kind: &str, target: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.symbol-ownership\n{kind}\n{target}"
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_symbol_mutation(
+    state: &ApiState,
+    actor: &str,
+    operation: &str,
+    target_digest: &str,
+    outcome_class: Option<&str>,
+    outcome_count: Option<usize>,
+    status: &str,
+    rejection_code: Option<&str>,
+    persistence_applied: bool,
+    memory_applied: bool,
+) {
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(target_digest.to_string()),
+        kind: "mcp_symbol_ownership_mutation_authority".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-symbol-ownership-mutation".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": operation,
+            "targetDigest": target_digest,
+            "outcomeClass": outcome_class,
+            "outcomeCount": outcome_count,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "persistenceApplied": persistence_applied,
+            "memoryApplied": memory_applied,
+            "targetValuesLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(actor, operation, target_digest, error = %error, "symbol ownership audit failed");
+    }
+}
+
+fn symbol_claim_outcome_metadata(
+    outcome: &crate::symbol_ownership::ClaimOutcome,
+) -> (&'static str, usize, bool) {
+    match outcome {
+        crate::symbol_ownership::ClaimOutcome::Granted => ("granted", 0, true),
+        crate::symbol_ownership::ClaimOutcome::Blocked { conflicts } => {
+            ("blocked", conflicts.len(), false)
+        }
+        crate::symbol_ownership::ClaimOutcome::Warned { conflicts } => {
+            ("warned", conflicts.len(), true)
+        }
+    }
+}
+
+fn mcp_symbol_claim(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let claim_id = arg_string(args, "claimId")?;
+    let target_digest = symbol_target_digest("claim", &claim_id);
+    if claim_id.starts_with("parse:") || claim_id.starts_with("dh:") {
+        audit_mcp_symbol_mutation(
+            state,
+            actor,
+            "claim",
+            &target_digest,
+            None,
+            None,
+            "rejected",
+            Some("reserved_claim_prefix"),
+            false,
+            false,
+        );
+        return Err(ApiError::BadRequest(
+            "claimId prefix `parse:`/`dh:` is reserved for derived claims".to_string(),
+        ));
+    }
+    let now = now_secs();
+    let lease_secs = args
+        .get("leaseSecs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(300);
+    let start_line = args
+        .get("startLine")
+        .and_then(|value| value.as_u64())
+        .ok_or_else(|| ApiError::BadRequest("startLine must be an integer".to_string()))?
+        as u32;
+    let end_line = args
+        .get("endLine")
+        .and_then(|value| value.as_u64())
+        .ok_or_else(|| ApiError::BadRequest("endLine must be an integer".to_string()))?
+        as u32;
+    let mode: crate::symbol_ownership::ClaimMode =
+        serde_json::from_value(args.get("mode").cloned().unwrap_or(serde_json::Value::Null))
+            .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?;
+    let confidence: crate::symbol_ownership::Confidence = serde_json::from_value(
+        args.get("confidence")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+    )
+    .map_err(|_| ApiError::BadRequest("invalid confidence".to_string()))?;
+    let claim = crate::symbol_ownership::SymbolClaim {
+        claim_id,
+        agent_id: arg_string(args, "agentId")?,
+        task_id: args
+            .get("taskId")
+            .and_then(|value| value.as_str())
+            .map(String::from),
+        path: arg_string(args, "path")?.replace('\\', "/"),
+        symbol: arg_string(args, "symbol")?,
+        range: crate::symbol_ownership::SymbolRange::new(start_line, end_line),
+        mode,
+        lease_expires_at: now.saturating_add(lease_secs),
+        confidence,
+    };
+    let mut owner = match ownership.lock() {
+        Ok(owner) => owner,
+        Err(_) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "claim",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                false,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    let mut staging = owner.clone();
+    let outcome = staging.claim(claim.clone(), now);
+    let (outcome_class, outcome_count, mutation_applied) = symbol_claim_outcome_metadata(&outcome);
+    let serialized = serde_json::to_value(&outcome)
+        .map_err(|error| ApiError::Internal(format!("serialize symbol outcome: {error}")))?;
+    if !mutation_applied {
+        drop(owner);
+        audit_mcp_symbol_mutation(
+            state,
+            actor,
+            "claim",
+            &target_digest,
+            Some(outcome_class),
+            Some(outcome_count),
+            "accepted",
+            None,
+            false,
+            false,
+        );
+        return Ok(serialized);
+    }
+    if let Err(error) = ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::upsert_symbol_claim(database, &claim, now)
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        drop(owner);
+        audit_mcp_symbol_mutation(
+            state,
+            actor,
+            "claim",
+            &target_digest,
+            Some(outcome_class),
+            Some(outcome_count),
+            "rejected",
+            Some("symbol_persistence_failed"),
+            false,
+            false,
+        );
+        return Err(error);
+    }
+    *owner = staging;
+    drop(owner);
+    audit_mcp_symbol_mutation(
+        state,
+        actor,
+        "claim",
+        &target_digest,
+        Some(outcome_class),
+        Some(outcome_count),
+        "accepted",
+        None,
+        true,
+        true,
+    );
+    Ok(serialized)
+}
+
+fn mcp_symbol_refresh(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let claim_id = arg_string(args, "claimId")?;
+    let target_digest = symbol_target_digest("claim", &claim_id);
+    let lease_secs = args
+        .get("leaseSecs")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(300);
+    let now = now_secs();
+    let mut owner = match ownership.lock() {
+        Ok(owner) => owner,
+        Err(_) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "refresh",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                false,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    let mut staging = owner.clone();
+    if !staging.refresh(&claim_id, now, lease_secs) {
+        drop(owner);
+        audit_mcp_symbol_mutation(
+            state,
+            actor,
+            "refresh",
+            &target_digest,
+            Some("missing"),
+            Some(0),
+            "accepted",
+            None,
+            false,
+            false,
+        );
+        return Ok(serde_json::json!({ "refreshed": false }));
+    }
+    let claim = staging.get(&claim_id).cloned().ok_or_else(|| {
+        ApiError::Internal("refreshed symbol claim vanished from staging".to_string())
+    })?;
+    if let Err(error) = ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::upsert_symbol_claim(database, &claim, now)
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        drop(owner);
+        audit_mcp_symbol_mutation(
+            state,
+            actor,
+            "refresh",
+            &target_digest,
+            Some("refreshed"),
+            Some(1),
+            "rejected",
+            Some("symbol_persistence_failed"),
+            false,
+            false,
+        );
+        return Err(error);
+    }
+    *owner = staging;
+    drop(owner);
+    audit_mcp_symbol_mutation(
+        state,
+        actor,
+        "refresh",
+        &target_digest,
+        Some("refreshed"),
+        Some(1),
+        "accepted",
+        None,
+        true,
+        true,
+    );
+    Ok(serde_json::json!({ "refreshed": true }))
+}
+
+fn mcp_symbol_release(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let claim_id = arg_string(args, "claimId")?;
+    let target_digest = symbol_target_digest("claim", &claim_id);
+    let persisted = match ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::delete_symbol_claim(database, &claim_id)
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        Ok(persisted) => persisted,
+        Err(error) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "release",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_persistence_failed"),
+                false,
+                false,
+            );
+            return Err(error);
+        }
+    };
+    let released = match ownership.lock() {
+        Ok(mut owner) => owner.release(&claim_id),
+        Err(_) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "release",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                persisted,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    audit_mcp_symbol_mutation(
+        state,
+        actor,
+        "release",
+        &target_digest,
+        Some(if released { "released" } else { "missing" }),
+        Some(usize::from(released)),
+        "accepted",
+        None,
+        persisted,
+        released,
+    );
+    Ok(serde_json::json!({ "released": released }))
+}
+
+fn mcp_symbol_release_task(
+    state: &ApiState,
+    actor: &str,
+    args: &serde_json::Map<String, serde_json::Value>,
+) -> ApiResult<serde_json::Value> {
+    let actor = authenticated_symbol_actor(actor)?;
+    let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
+        ApiError::Internal("symbol ownership is not attached to this process".to_string())
+    })?;
+    let task_id = arg_string(args, "taskId")?;
+    let target_digest = symbol_target_digest("task", &task_id);
+    let persisted = match ownership_db(state).and_then(|db| {
+        db.with(|database| {
+            crate::persistence::OwnershipRepo::delete_symbol_claims_for_task(database, &task_id)
+        })
+        .map_err(ApiError::Internal)
+    }) {
+        Ok(persisted) => persisted,
+        Err(error) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "release_task",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_persistence_failed"),
+                false,
+                false,
+            );
+            return Err(error);
+        }
+    };
+    let released = match ownership.lock() {
+        Ok(mut owner) => owner.release_for_task(&task_id),
+        Err(_) => {
+            audit_mcp_symbol_mutation(
+                state,
+                actor,
+                "release_task",
+                &target_digest,
+                None,
+                None,
+                "rejected",
+                Some("symbol_memory_lock_failed"),
+                persisted > 0,
+                false,
+            );
+            return Err(ApiError::Internal(
+                "symbol ownership lock poisoned".to_string(),
+            ));
+        }
+    };
+    audit_mcp_symbol_mutation(
+        state,
+        actor,
+        "release_task",
+        &target_digest,
+        Some(if released > 0 { "released" } else { "missing" }),
+        Some(released),
+        "accepted",
+        None,
+        persisted > 0,
+        released > 0,
+    );
+    Ok(serde_json::json!({ "released": released }))
+}
+
 fn mcp_proofbook_runner(state: &ApiState) -> ApiResult<crate::proofbook::ProofbookRunner> {
     state.proofbook_runner.clone().ok_or_else(|| {
         ApiError::Internal(
@@ -2951,144 +3413,10 @@ pub(super) async fn dispatch_authorized(
             };
             serde_json::json!({ "conflicts": conflicts })
         }
-        "aelyris.symbol.claim" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let now = now_secs();
-            let lease_secs = args
-                .get("leaseSecs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(300);
-            let start_line = args
-                .get("startLine")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| ApiError::BadRequest("startLine must be an integer".to_string()))?
-                as u32;
-            let end_line = args
-                .get("endLine")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| ApiError::BadRequest("endLine must be an integer".to_string()))?
-                as u32;
-            let mode: crate::symbol_ownership::ClaimMode = serde_json::from_value(
-                args.get("mode").cloned().unwrap_or(serde_json::Value::Null),
-            )
-            .map_err(|_| ApiError::BadRequest("invalid mode".to_string()))?;
-            let confidence: crate::symbol_ownership::Confidence = serde_json::from_value(
-                args.get("confidence")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null),
-            )
-            .map_err(|_| ApiError::BadRequest("invalid confidence".to_string()))?;
-            let claim_id = arg_string(&args, "claimId")?;
-            // `parse:` / `dh:` are RESERVED id prefixes for extractor-derived claims
-            // (claim_from_source / claim_from_diff) so their reconcile can't sweep a
-            // hand-made claim. Reject a manual claim that squats on them.
-            if claim_id.starts_with("parse:") || claim_id.starts_with("dh:") {
-                return Err(ApiError::BadRequest(
-                    "claimId prefix `parse:`/`dh:` is reserved for derived claims".to_string(),
-                ));
-            }
-            let claim = crate::symbol_ownership::SymbolClaim {
-                claim_id,
-                agent_id: arg_string(&args, "agentId")?,
-                task_id: args
-                    .get("taskId")
-                    .and_then(|v| v.as_str())
-                    .map(String::from),
-                // Normalize to forward slashes so a `src\x.rs` claim conflict-detects
-                // against a `src/x.rs` claim (path equality drives conflict_between).
-                path: arg_string(&args, "path")?.replace('\\', "/"),
-                symbol: arg_string(&args, "symbol")?,
-                range: crate::symbol_ownership::SymbolRange::new(start_line, end_line),
-                mode,
-                lease_expires_at: now.saturating_add(lease_secs),
-                confidence,
-            };
-            let outcome = {
-                let mut owner = ownership.lock().map_err(|_| {
-                    ApiError::Internal("symbol ownership lock poisoned".to_string())
-                })?;
-                let mut staging = owner.clone();
-                let outcome = staging.claim(claim.clone(), now);
-                if !matches!(
-                    outcome,
-                    crate::symbol_ownership::ClaimOutcome::Blocked { .. }
-                ) {
-                    ownership_db(&state)?
-                        .with(|db| {
-                            crate::persistence::OwnershipRepo::upsert_symbol_claim(db, &claim, now)
-                        })
-                        .map_err(ApiError::Internal)?;
-                    *owner = staging;
-                }
-                outcome
-            };
-            serde_json::to_value(outcome)
-                .map_err(|err| ApiError::Internal(format!("serialize symbol outcome: {err}")))?
-        }
-        "aelyris.symbol.refresh" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let claim_id = arg_string(&args, "claimId")?;
-            let lease_secs = args
-                .get("leaseSecs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(300);
-            let now = now_secs();
-            let refreshed = {
-                let mut owner = ownership.lock().map_err(|_| {
-                    ApiError::Internal("symbol ownership lock poisoned".to_string())
-                })?;
-                let mut staging = owner.clone();
-                if !staging.refresh(&claim_id, now, lease_secs) {
-                    false
-                } else {
-                    let claim = staging.get(&claim_id).cloned().ok_or_else(|| {
-                        ApiError::Internal(format!("refreshed claim vanished: {claim_id}"))
-                    })?;
-                    ownership_db(&state)?
-                        .with(|db| {
-                            crate::persistence::OwnershipRepo::upsert_symbol_claim(db, &claim, now)
-                        })
-                        .map_err(ApiError::Internal)?;
-                    *owner = staging;
-                    true
-                }
-            };
-            serde_json::json!({ "refreshed": refreshed })
-        }
-        "aelyris.symbol.release" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let claim_id = arg_string(&args, "claimId")?;
-            ownership_db(&state)?
-                .with(|db| crate::persistence::OwnershipRepo::delete_symbol_claim(db, &claim_id))
-                .map_err(ApiError::Internal)?;
-            let released = ownership
-                .lock()
-                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
-                .release(&claim_id);
-            serde_json::json!({ "released": released })
-        }
-        "aelyris.symbol.release_task" => {
-            let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
-                ApiError::Internal("symbol ownership is not attached to this process".to_string())
-            })?;
-            let task_id = arg_string(&args, "taskId")?;
-            ownership_db(&state)?
-                .with(|db| {
-                    crate::persistence::OwnershipRepo::delete_symbol_claims_for_task(db, &task_id)
-                })
-                .map_err(ApiError::Internal)?;
-            let released = ownership
-                .lock()
-                .map_err(|_| ApiError::Internal("symbol ownership lock poisoned".to_string()))?
-                .release_for_task(&task_id);
-            serde_json::json!({ "released": released })
-        }
+        "aelyris.symbol.claim" => mcp_symbol_claim(&state, actor, &args)?,
+        "aelyris.symbol.refresh" => mcp_symbol_refresh(&state, actor, &args)?,
+        "aelyris.symbol.release" => mcp_symbol_release(&state, actor, &args)?,
+        "aelyris.symbol.release_task" => mcp_symbol_release_task(&state, actor, &args)?,
         "aelyris.symbol.claims" => {
             let ownership = state.symbol_ownership.as_ref().ok_or_else(|| {
                 ApiError::Internal("symbol ownership is not attached to this process".to_string())

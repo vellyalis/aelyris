@@ -748,7 +748,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.claim",
-                "description": "Claim a SYMBOL range inside a file (finer than file ownership): two agents may write the same file on disjoint ranges, but overlapping writes conflict. Returns { outcome: granted|warned|blocked, conflicts? }. blocked = NOT recorded (pick a disjoint range or wait). confidence lsp/parser is exact (overlap blocks); diff-hunk is inferred (overlap only warns).",
+                "description": "Claim a SYMBOL range inside a file as the authenticated Principal while agentId/taskId remain claim-domain ownership fields. Two agents may write the same file on disjoint ranges; exact overlaps block and inferred diff-hunk overlaps warn. Durable authority evidence stores only one-way target correlation and outcome metadata, never claim targets or conflict payloads.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -770,7 +770,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.refresh",
-                "description": "Extend a live symbol claim's lease (the heartbeat that keeps a claim alive; an unrefreshed claim expires and frees its range). Returns { refreshed }.",
+                "description": "Extend a live manual symbol claim's lease as the authenticated Principal. Returns { refreshed }; durable authority evidence stores only one-way target correlation and outcome metadata.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -784,7 +784,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.release",
-                "description": "Release a symbol claim by id (call when done editing the symbol). Returns { released }.",
+                "description": "Release a manual symbol claim by id as the authenticated Principal. Returns { released }; the claim id is not persisted in authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",
@@ -795,7 +795,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.symbol.release_task",
-                "description": "Release ALL symbol claims a task held (call on merge/fail) — frees every range that task's worker claimed. Returns { released } (count).",
+                "description": "Release all symbol claims for a task as the authenticated Principal. Returns { released } (count); task and symbol target values are omitted from authority evidence.",
                 "safety": "FREE",
                 "inputSchema": {
                     "type": "object",

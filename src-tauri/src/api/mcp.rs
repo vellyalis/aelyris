@@ -1409,6 +1409,267 @@ mod tests {
     }
 
     #[test]
+    fn mcp_manual_symbol_lifecycle_audit_is_principal_bound_and_target_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+        use crate::symbol_ownership::SymbolOwnership;
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let ownership = Arc::new(std::sync::Mutex::new(SymbolOwnership::new()));
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_symbol_ownership(ownership.clone());
+        for verb in [
+            "aelyris.symbol.claim",
+            "aelyris.symbol.refresh",
+            "aelyris.symbol.release",
+            "aelyris.symbol.release_task",
+        ] {
+            let schema = input_schema_for_tool_ref(verb).unwrap();
+            assert!(schema["properties"].get("actor").is_none());
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "symbol-operator",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let first_claim = "AIO15_CLAIM_A_MUST_NOT_BE_LOGGED";
+        let first_agent = "AIO15_ASSIGNED_AGENT_A_MUST_NOT_BE_ACTOR_OR_LOGGED";
+        let first_task = "AIO15_TASK_A_MUST_NOT_BE_LOGGED";
+        let normalized_path = "src/AIO15_PATH_MUST_NOT_BE_LOGGED.rs";
+        let raw_path = "src\\AIO15_PATH_MUST_NOT_BE_LOGGED.rs";
+        let first_symbol = "AIO15_SYMBOL_A_MUST_NOT_BE_LOGGED";
+        let blocked_claim = "AIO15_BLOCKED_CLAIM_MUST_NOT_BE_LOGGED";
+        let blocked_agent = "AIO15_BLOCKED_AGENT_MUST_NOT_BE_LOGGED";
+        let blocked_symbol = "AIO15_BLOCKED_SYMBOL_MUST_NOT_BE_LOGGED";
+
+        let Json(granted) = call(
+            "aelyris.symbol.claim",
+            serde_json::json!({
+                "claimId": first_claim,
+                "agentId": first_agent,
+                "taskId": first_task,
+                "path": raw_path,
+                "symbol": first_symbol,
+                "startLine": 10,
+                "endLine": 20,
+                "mode": "write",
+                "confidence": "parser",
+                "leaseSecs": 600,
+            }),
+        )
+        .expect("manual symbol claim succeeds");
+        assert_eq!(granted["result"]["outcome"], "granted");
+        assert_eq!(
+            ownership
+                .lock()
+                .unwrap()
+                .get(first_claim)
+                .map(|claim| claim.path.as_str()),
+            Some(normalized_path),
+            "manual claim keeps existing path normalization"
+        );
+
+        let Json(blocked) = call(
+            "aelyris.symbol.claim",
+            serde_json::json!({
+                "claimId": blocked_claim,
+                "agentId": blocked_agent,
+                "path": normalized_path,
+                "symbol": blocked_symbol,
+                "startLine": 15,
+                "endLine": 18,
+                "mode": "write",
+                "confidence": "parser",
+            }),
+        )
+        .expect("blocked claim remains a typed outcome");
+        assert_eq!(blocked["result"]["outcome"], "blocked");
+        assert!(ownership.lock().unwrap().get(blocked_claim).is_none());
+
+        let Json(refreshed) = call(
+            "aelyris.symbol.refresh",
+            serde_json::json!({ "claimId": first_claim, "leaseSecs": 900 }),
+        )
+        .expect("refresh succeeds");
+        assert_eq!(refreshed["result"]["refreshed"], true);
+
+        let Json(released) = call(
+            "aelyris.symbol.release",
+            serde_json::json!({ "claimId": first_claim }),
+        )
+        .expect("release succeeds");
+        assert_eq!(released["result"]["released"], true);
+
+        let task_claim = "AIO15_TASK_CLAIM_MUST_NOT_BE_LOGGED";
+        let task_agent = "AIO15_TASK_AGENT_MUST_NOT_BE_LOGGED";
+        let release_task = "AIO15_RELEASE_TASK_MUST_NOT_BE_LOGGED";
+        let task_path = "src/AIO15_TASK_PATH_MUST_NOT_BE_LOGGED.rs";
+        let task_symbol = "AIO15_TASK_SYMBOL_MUST_NOT_BE_LOGGED";
+        let Json(task_granted) = call(
+            "aelyris.symbol.claim",
+            serde_json::json!({
+                "claimId": task_claim,
+                "agentId": task_agent,
+                "taskId": release_task,
+                "path": task_path,
+                "symbol": task_symbol,
+                "startLine": 1,
+                "endLine": 5,
+                "mode": "review",
+                "confidence": "lsp",
+            }),
+        )
+        .expect("task-bound claim succeeds");
+        assert_eq!(task_granted["result"]["outcome"], "granted");
+
+        let Json(released_task) = call(
+            "aelyris.symbol.release_task",
+            serde_json::json!({ "taskId": release_task }),
+        )
+        .expect("task release succeeds");
+        assert_eq!(released_task["result"]["released"], 1);
+
+        let rejected_claim = "AIO15_PERSISTENCE_REJECTED_CLAIM_MUST_NOT_BE_LOGGED";
+        let rejected_agent = "AIO15_PERSISTENCE_REJECTED_AGENT_MUST_NOT_BE_LOGGED";
+        let rejected_path = "src/AIO15_REJECTED_PATH_MUST_NOT_BE_LOGGED.rs";
+        let rejected_symbol = "AIO15_REJECTED_SYMBOL_MUST_NOT_BE_LOGGED";
+        db.with(|database| {
+            database
+                .conn()
+                .execute_batch(&format!(
+                    "CREATE TRIGGER reject_aio15_symbol_claim\n\
+                     BEFORE INSERT ON symbol_ownership_claims\n\
+                     WHEN NEW.claim_id = '{rejected_claim}'\n\
+                     BEGIN\n\
+                         SELECT RAISE(ABORT, 'simulated symbol persistence failure');\n\
+                     END;"
+                ))
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+        assert!(matches!(
+            call(
+                "aelyris.symbol.claim",
+                serde_json::json!({
+                    "claimId": rejected_claim,
+                    "agentId": rejected_agent,
+                    "path": rejected_path,
+                    "symbol": rejected_symbol,
+                    "startLine": 30,
+                    "endLine": 40,
+                    "mode": "write",
+                    "confidence": "parser",
+                }),
+            ),
+            Err(ApiError::Internal(_))
+        ));
+        assert!(ownership.lock().unwrap().get(rejected_claim).is_none());
+
+        let persisted_claim_count = db
+            .with(|database| {
+                database
+                    .conn()
+                    .query_row("SELECT COUNT(*) FROM symbol_ownership_claims", [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(persisted_claim_count, 0);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_symbol_ownership_mutation_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read symbol ownership audit");
+        assert_eq!(rows.len(), 7);
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some("symbol-operator")));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "claim"
+                && row.redacted_payload_json["outcomeClass"] == "granted"
+                && row.redacted_payload_json["persistenceApplied"] == true
+                && row.redacted_payload_json["memoryApplied"] == true
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "claim"
+                && row.redacted_payload_json["outcomeClass"] == "blocked"
+                && row.redacted_payload_json["outcomeCount"] == 1
+                && row.redacted_payload_json["persistenceApplied"] == false
+                && row.redacted_payload_json["memoryApplied"] == false
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "refresh"
+                && row.redacted_payload_json["outcomeClass"] == "refreshed"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["operation"] == "release_task"
+                && row.redacted_payload_json["outcomeCount"] == 1
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"] == "symbol_persistence_failed"
+                && row.redacted_payload_json["status"] == "rejected"
+                && row.redacted_payload_json["persistenceApplied"] == false
+                && row.redacted_payload_json["memoryApplied"] == false
+        }));
+        let digests = rows
+            .iter()
+            .map(|row| {
+                row.redacted_payload_json["targetDigest"]
+                    .as_str()
+                    .expect("symbol target digest")
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(digests.len(), 5);
+        assert!(digests.iter().all(|digest| {
+            digest.len() == 64
+                && digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["targetValuesLogged"], false);
+            let audit_text = serde_json::to_string(row).unwrap();
+            for hidden in [
+                first_claim,
+                first_agent,
+                first_task,
+                normalized_path,
+                raw_path,
+                first_symbol,
+                blocked_claim,
+                blocked_agent,
+                blocked_symbol,
+                task_claim,
+                task_agent,
+                release_task,
+                task_path,
+                task_symbol,
+                rejected_claim,
+                rejected_agent,
+                rejected_path,
+                rejected_symbol,
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+    }
+
+    #[test]
     fn pane_identity_mcp_schema_and_tool_error_contract() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let state = ApiState::new(

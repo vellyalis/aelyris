@@ -169,6 +169,17 @@ assignee ids, patterns, paths, conflict payloads, bearer values, environment val
 repository contents are excluded, and a persistence or lock failure is never recorded
 as an accepted assignment or replayed for audit.
 
+Manual `aelyris.symbol.claim`, `refresh`, `release`, and `release_task` calls preserve
+the existing `SymbolOwnership` staging and `OwnershipRepo` owners. The authenticated
+Principal is the initiating actor while claim id, assigned agent/task, path, symbol,
+range, mode, confidence, and lease remain claim-domain values. Reserved derived-claim
+prefixes, path normalization, exact-versus-inferred conflict semantics, and
+persistence-before-memory behavior stay unchanged. Durable authority evidence contains
+only operation, result/outcome class and count, persistence/memory application state,
+and a stable one-way claim/task digest; raw targets and conflict payloads are excluded.
+Derived diff/source ingestion remains a separately bounded adapter because it accepts
+large source payloads and owns reconciliation semantics beyond the manual lifecycle.
+
 ### 2.3 Loopback safety rules (HTTP transport only)
 
 - Bind `127.0.0.1` only — never `0.0.0.0`. (Matches `serve` at `:990`.)

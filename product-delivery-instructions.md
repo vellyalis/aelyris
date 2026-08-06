@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-15`.
-LAST COMPLETED SLICE: `AIO-14`.
-NEXT IMPLEMENTATION SLICE: `AIO-15`.
+ACTIVE SLICE: `AIO-16`.
+LAST COMPLETED SLICE: `AIO-15`.
+NEXT IMPLEMENTATION SLICE: `AIO-16`.
 
 ```yaml
 continuation_contract:
@@ -72,7 +72,8 @@ Current portfolio classification:
 | MCP worktree mutation actor evidence | **COMPLETE** | Create/remove now retain authenticated, target-minimized evidence and remove the branch/name through the branch-aware Git owner |
 | MCP task mutation actor evidence | **COMPLETE** | Task create/transition now retain the authenticated initiating Principal separately from assignment metadata, using packet-free task digests and explicit Event Bus publication outcomes |
 | MCP file-ownership assignment evidence | **COMPLETE** | File-pattern assignment now retains the authenticated initiating Principal separately from assignee/pattern values, using a target-minimized digest and persistence/memory outcome evidence |
-| MCP manual symbol-ownership mutation evidence | **NOW** | AI can claim, refresh, and release symbol ownership, but claim/agent/task/source fields are caller-selected domain values and the authenticated initiating Principal is not retained separately |
+| MCP manual symbol-ownership mutation evidence | **COMPLETE** | Manual claim/refresh/release now retain the authenticated initiating Principal separately from claim ownership fields, using target-free digests and explicit persistence/memory outcomes |
+| MCP derived symbol-ownership mutation evidence | **NOW** | Diff/source-derived claims reconcile large caller payloads into ownership state, but the authenticated initiating Principal and value-minimized reconciliation outcome are not yet retained separately |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -90,7 +91,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-14` is complete; no
+- This work order is the sole repo-mutating product lane. `AIO-15` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -1056,7 +1057,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` manual symbol claim, refresh, and release whose
 initiating identity comes from the authenticated MCP Principal while claim ownership
 fields remain domain metadata.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing `aelyris.symbol.claim`, `aelyris.symbol.refresh`,
   `aelyris.symbol.release`, and `aelyris.symbol.release_task` adapters,
@@ -1078,6 +1079,35 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can perform the existing manual symbol-ownership lifecycle,
   and each effect is attributable without confusing claim ownership with caller
   identity or leaking symbol targets.
+
+### AIO-16 — Principal-Bound MCP Derived Symbol-Ownership Mutation Evidence
+
+Capability target: `Product-Accessible` diff/source-derived symbol reconciliation whose
+initiating identity comes from the authenticated MCP Principal without persisting the
+large source payload or derived target values.
+Status: **ACTIVE**.
+
+- Extend the existing `aelyris.symbol.claim_from_diff` and
+  `aelyris.symbol.claim_from_source` adapters, extractor/reconciliation logic,
+  `SymbolOwnership`, `OwnershipRepo`, Governance, and durable audit journal. Do not add
+  a parser, diff engine, symbol map, actor field, reconciliation service, or AI-only
+  ownership path.
+- Keep caller-supplied agent/task ids, path, diff/source body, mode, language, and lease
+  as derivation inputs. Those values remain derivation metadata and never define the
+  caller identity or enter actor evidence.
+- Preserve the 1 MiB payload bound, raw-diff semantics, tree-sitter supported-language
+  fallback, reserved extractor prefixes, per-origin reconciliation, conflict outcome
+  semantics, staged persistence-before-memory transaction, typed errors, and the
+  existing extractor/ownership owners.
+- Retain accepted/rejected audit with actor, operation, fallback/recorded counts,
+  outcome-class counts, mutation state, and stable one-way origin/input digests.
+  Do not persist raw diff/source, agent/task ids, paths, symbols, ranges, language,
+  conflict payloads, bearer values, environment values, or repository contents.
+- Persistence, parse, reconciliation, or lock failure must remain explicit and must not
+  be audited as accepted. Do not replay derivation merely to obtain audit evidence.
+- Done: an authenticated AI can derive and reconcile symbol claims through the existing
+  diff/source paths, and each effect is attributable without leaking the derivation
+  payload or confusing claim ownership with caller identity.
 
 ## Deferred After GMV
 
@@ -1101,7 +1131,8 @@ complete. Principal-bound MCP agent lifecycle evidence `AIO-11`, Principal-bound
 worktree mutation evidence `AIO-12`, and Principal-bound MCP task mutation evidence
 `AIO-13` and Principal-bound MCP file-ownership assignment evidence `AIO-14` are also
 complete. Principal-bound MCP manual symbol-ownership mutation evidence `AIO-15` is
-active;
+also complete. Principal-bound MCP derived symbol-ownership mutation evidence `AIO-16`
+is active;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
