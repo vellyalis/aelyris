@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::{Query, State},
-    Json,
+    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +16,10 @@ use super::{ApiError, ApiResult, ApiState};
 
 const SNAPSHOT_SCHEMA: &str = "aelyris.continuity.snapshot/v1";
 const CHANGES_SCHEMA: &str = "aelyris.continuity.changes/v1";
+const PRINCIPAL_SCHEMA: &str = "aelyris.continuity.principal/v1";
+pub(super) const SNAPSHOT_CAPABILITY: &str = "continuity.snapshot.read";
+pub(super) const CHANGES_CAPABILITY: &str = "continuity.changes.read";
+pub(super) const PRINCIPAL_CAPABILITY: &str = "continuity.principal.read";
 const DEFAULT_CHANGES_LIMIT: usize = 100;
 const MAX_CHANGES_LIMIT: usize = 1_000;
 const MAX_TEXT_CHARS: usize = 256;
@@ -82,6 +86,17 @@ pub(super) struct ContinuityChanges {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct ContinuityPrincipalScope {
+    schema: &'static str,
+    captured_at_ms: u64,
+    principal: ContinuityPrincipalIdentity,
+    transport: ContinuityPrincipalTransport,
+    capabilities: [ContinuityCapabilityAccess; 2],
+    omitted: [&'static str; 6],
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ContinuityProcess {
     process_kind: &'static str,
     instance_id: String,
@@ -109,6 +124,33 @@ struct ContinuityChangesTransport {
     mutation_supported: bool,
     live_watch_supported: bool,
     remote_operation_claim: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityPrincipalIdentity {
+    actor: String,
+    tenant: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityPrincipalTransport {
+    bind_scope: &'static str,
+    authentication: &'static str,
+    authenticated: bool,
+    read_only_discovery: bool,
+    mutation_supported: bool,
+    remote_operation_claim: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContinuityCapabilityAccess {
+    name: &'static str,
+    authorized: bool,
+    available: bool,
+    invokable: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -345,6 +387,77 @@ pub(super) async fn changes(
     Ok(Json(build_changes(&state, after_seq, limit)?))
 }
 
+pub(super) async fn whoami(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<crate::governance::Principal>,
+) -> ApiResult<Json<ContinuityPrincipalScope>> {
+    Ok(Json(build_principal_scope(&state, &principal)?))
+}
+
+fn build_principal_scope(
+    state: &ApiState,
+    principal: &crate::governance::Principal,
+) -> Result<ContinuityPrincipalScope, ApiError> {
+    Ok(ContinuityPrincipalScope {
+        schema: PRINCIPAL_SCHEMA,
+        captured_at_ms: now_ms(),
+        principal: ContinuityPrincipalIdentity {
+            actor: exact_bounded_identity(&principal.actor, "actor")?,
+            tenant: exact_bounded_identity(&principal.tenant, "tenant")?,
+        },
+        transport: ContinuityPrincipalTransport {
+            bind_scope: "loopback-only",
+            authentication: "bearer",
+            authenticated: state.auth.is_enabled(),
+            read_only_discovery: true,
+            mutation_supported: false,
+            remote_operation_claim: false,
+        },
+        capabilities: [
+            continuity_capability_access(state, principal, SNAPSHOT_CAPABILITY, true),
+            continuity_capability_access(
+                state,
+                principal,
+                CHANGES_CAPABILITY,
+                changes_available(state),
+            ),
+        ],
+        omitted: [
+            "bearer_tokens",
+            "token_file_paths",
+            "principal_roles",
+            "policy_internals",
+            "denial_reasons",
+            "mutation_capabilities",
+        ],
+    })
+}
+
+fn continuity_capability_access(
+    state: &ApiState,
+    principal: &crate::governance::Principal,
+    name: &'static str,
+    available: bool,
+) -> ContinuityCapabilityAccess {
+    let authorized = state
+        .governance
+        .authorize(&principal.actor, name)
+        .is_allowed();
+    ContinuityCapabilityAccess {
+        name,
+        authorized,
+        available,
+        invokable: authorized && available,
+    }
+}
+
+pub(super) fn changes_available(state: &ApiState) -> bool {
+    state
+        .event_bus
+        .as_ref()
+        .is_some_and(|event_bus| event_bus.frontier().is_ok())
+}
+
 fn validate_changes_query(query: ContinuityChangesQuery) -> Result<(i64, usize), ApiError> {
     let after_seq = query
         .after_seq
@@ -451,6 +564,20 @@ fn exact_bounded_event_id(event_id: &str) -> Result<String, ApiError> {
         )));
     }
     Ok(event_id.to_string())
+}
+
+fn exact_bounded_identity(value: &str, field: &str) -> Result<String, ApiError> {
+    if value.trim().is_empty() {
+        return Err(ApiError::Internal(format!(
+            "authenticated continuity principal has an empty {field}"
+        )));
+    }
+    if value.chars().count() > MAX_TEXT_CHARS {
+        return Err(ApiError::Internal(format!(
+            "authenticated continuity principal {field} exceeds the bound of {MAX_TEXT_CHARS} characters"
+        )));
+    }
+    Ok(value.to_string())
 }
 
 fn build_snapshot(
@@ -964,6 +1091,7 @@ mod tests {
     use crate::db::{Database, ManagedDb};
     use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
     use crate::file_ownership::FileOwnership;
+    use crate::governance::{AccessControl, AccessDecision, Governance, Principal};
     use crate::pty::PtyManager;
     use serde_json::json;
 
@@ -999,6 +1127,91 @@ mod tests {
                 "unexpected field: {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn principal_scope_uses_governance_truth_without_exposing_credentials_or_policy_details() {
+        struct ObservePolicy;
+        impl AccessControl for ObservePolicy {
+            fn authorize(&self, _actor: &str, capability: &str) -> AccessDecision {
+                if capability == CHANGES_CAPABILITY {
+                    AccessDecision::Deny("HIDDEN_POLICY_REASON".to_string())
+                } else {
+                    AccessDecision::Allow
+                }
+            }
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let event_bus = Arc::new(EventBus::new_durable());
+        event_bus.attach_db(db);
+        let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("SECRET_BEARER"))
+            .with_event_bus(event_bus)
+            .with_governance(Arc::new(Governance::with_access(Box::new(ObservePolicy))));
+        let principal = Principal {
+            actor: "continuity-reader".to_string(),
+            tenant: "tenant-blue".to_string(),
+            roles: vec!["HIDDEN_ROLE".to_string()],
+        };
+
+        let value =
+            serde_json::to_value(build_principal_scope(&state, &principal).unwrap()).unwrap();
+        assert_eq!(value["schema"], PRINCIPAL_SCHEMA);
+        assert_eq!(value["principal"]["actor"], "continuity-reader");
+        assert_eq!(value["principal"]["tenant"], "tenant-blue");
+        assert_eq!(value["transport"]["bindScope"], "loopback-only");
+        assert_eq!(value["transport"]["authentication"], "bearer");
+        assert_eq!(value["transport"]["authenticated"], true);
+        assert_eq!(value["transport"]["readOnlyDiscovery"], true);
+        assert_eq!(value["transport"]["mutationSupported"], false);
+        assert_eq!(value["transport"]["remoteOperationClaim"], false);
+
+        let capabilities = value["capabilities"].as_array().unwrap();
+        assert_eq!(capabilities.len(), 2);
+        assert_eq!(capabilities[0]["name"], SNAPSHOT_CAPABILITY);
+        assert_eq!(capabilities[0]["authorized"], true);
+        assert_eq!(capabilities[0]["available"], true);
+        assert_eq!(capabilities[0]["invokable"], true);
+        assert_eq!(capabilities[1]["name"], CHANGES_CAPABILITY);
+        assert_eq!(capabilities[1]["authorized"], false);
+        assert_eq!(capabilities[1]["available"], true);
+        assert_eq!(capabilities[1]["invokable"], false);
+
+        let serialized = serde_json::to_string(&value).unwrap();
+        for forbidden in [
+            "SECRET_BEARER",
+            "HIDDEN_ROLE",
+            "HIDDEN_POLICY_REASON",
+            "\"roles\":",
+            "\"denialReason\":",
+            "\"token\":",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked field: {forbidden}");
+        }
+    }
+
+    #[test]
+    fn principal_scope_fails_closed_instead_of_truncating_identity() {
+        let state = ApiState::new(PtyManager::new(), AuthConfig::disabled());
+        let oversized = Principal {
+            actor: "x".repeat(MAX_TEXT_CHARS + 1),
+            tenant: "tenant".to_string(),
+            roles: Vec::new(),
+        };
+        assert!(matches!(
+            build_principal_scope(&state, &oversized),
+            Err(ApiError::Internal(_))
+        ));
+
+        let empty_tenant = Principal {
+            actor: "operator".to_string(),
+            tenant: " ".to_string(),
+            roles: Vec::new(),
+        };
+        assert!(matches!(
+            build_principal_scope(&state, &empty_tenant),
+            Err(ApiError::Internal(_))
+        ));
     }
 
     #[test]

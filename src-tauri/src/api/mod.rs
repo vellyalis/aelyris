@@ -1513,8 +1513,9 @@ fn derive_capability(method: &Method, route: &str) -> String {
         ("GET", "/mcp/contract") => "mcp.contract",
         ("GET", "/health") => "health.read",
         ("GET", "/daemon/contract") => "daemon.contract",
-        ("GET", "/continuity/snapshot") => "continuity.snapshot.read",
-        ("GET", "/continuity/changes") => "continuity.changes.read",
+        ("GET", "/continuity/snapshot") => continuity::SNAPSHOT_CAPABILITY,
+        ("GET", "/continuity/changes") => continuity::CHANGES_CAPABILITY,
+        ("GET", "/continuity/whoami") => continuity::PRINCIPAL_CAPABILITY,
         ("POST", "/daemon/shutdown") => "daemon.shutdown",
         _ => return format!("{}:{route}", method.as_str().to_ascii_lowercase()),
     };
@@ -1926,6 +1927,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/daemon/contract", get(daemon_contract))
         .route("/continuity/snapshot", get(continuity::snapshot))
         .route("/continuity/changes", get(continuity::changes))
+        .route("/continuity/whoami", get(continuity::whoami))
         .route("/daemon/shutdown", post(daemon_shutdown))
         // E1: authorization runs just INSIDE auth (auth is added last = outermost,
         // so it runs first and inserts the Principal that this layer reads).
@@ -2120,6 +2122,9 @@ pub struct DaemonContractResponse {
     continuity_changes_endpoint: &'static str,
     continuity_changes_policy: &'static str,
     continuity_changes_available: bool,
+    continuity_principal_schema: &'static str,
+    continuity_principal_endpoint: &'static str,
+    continuity_principal_policy: &'static str,
     terminal_core_policy: TerminalCorePolicyResponse,
     capabilities: Vec<&'static str>,
 }
@@ -2509,15 +2514,13 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         "mux-export-import",
         "durable-scrollback",
         "continuity-read-only-snapshot",
+        "continuity-principal-scope-discovery",
         "terminal-core-policy",
         "native-input-boundary-contract",
         "native-render-pipeline-contract",
         "terminal-fallback-telemetry",
     ];
-    let continuity_changes_available = state
-        .event_bus
-        .as_ref()
-        .is_some_and(|event_bus| event_bus.frontier().is_ok());
+    let continuity_changes_available = continuity::changes_available(&state);
     if continuity_changes_available {
         capabilities.push("continuity-payload-free-finite-changes");
     }
@@ -2553,6 +2556,10 @@ async fn daemon_contract(State(state): State<ApiState>) -> Json<DaemonContractRe
         continuity_changes_policy:
             "authenticated-loopback-finite-payload-free-read-only-no-live-watch-requires-durable-event-owner",
         continuity_changes_available,
+        continuity_principal_schema: "aelyris.continuity.principal/v1",
+        continuity_principal_endpoint: "/continuity/whoami",
+        continuity_principal_policy:
+            "authenticated-loopback-read-only-governance-evaluated-no-policy-internals",
         terminal_core_policy: terminal_core_policy(),
         capabilities,
     })
@@ -3728,6 +3735,10 @@ mod tests {
         assert_eq!(
             derive_capability(&Method::GET, "/continuity/changes"),
             "continuity.changes.read"
+        );
+        assert_eq!(
+            derive_capability(&Method::GET, "/continuity/whoami"),
+            "continuity.principal.read"
         );
     }
 

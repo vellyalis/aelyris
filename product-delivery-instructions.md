@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `RC-3`.
-LAST COMPLETED SLICE: `RC-2`.
-NEXT IMPLEMENTATION SLICE: `RC-3`.
+ACTIVE SLICE: `AIO-1`.
+LAST COMPLETED SLICE: `RC-3`.
+NEXT IMPLEMENTATION SLICE: `AIO-1`.
 
 ```yaml
 continuation_contract:
@@ -57,7 +57,8 @@ Current portfolio classification:
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
 | Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Remote Continuity | **NOW** | RC-1/2 expose authenticated local snapshot plus finite payload-free changes; next make the existing principal/scope boundary machine-readable before any network exposure or mutation |
+| Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
+| AI self-operation discovery | **NOW** | The MCP face is broad and governed, but a restricted principal still receives the full static tool catalog and learns denials only after attempting a call |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -75,7 +76,7 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `RC-2` is complete; no
+- This work order is the sole repo-mutating product lane. `RC-3` is complete; no
   second repository lane is opened merely to wait for the GMV-3 provider quota.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
@@ -648,7 +649,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` identity and authorization discovery without
 private-network exposure or a new mutation authority.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Extend the existing bearer authentication, `Principal`, Governance, daemon
   contract, and `aelys` control face. Do not add a second token store, identity
@@ -670,6 +671,32 @@ Status: **ACTIVE**.
   current authenticated principal may actually invoke, using the same owner that
   enforces those operations.
 
+### AIO-1 — Principal-Scoped MCP Tool Discovery
+
+Capability target: `Product-Accessible` self-operation discovery without granting a
+new tool, permission, review verdict, merge authority, or remote transport.
+Status: **ACTIVE**.
+
+- Extend the existing MCP catalog, authenticated `Principal`, and `Governance`
+  authority. Do not create a second catalog, permission cache, role engine, policy
+  store, AI-specific superuser, or frontend-owned capability map.
+- Project `tools/list` from the existing static catalog through
+  `Governance::authorize(principal.actor, tool.name)`. The default local operator
+  remains catalog-compatible; a restricted principal sees only tools it may invoke.
+- Apply the same filtered projection to REST `/mcp/tools/list` and JSON-RPC
+  `tools/list`. Do not let the two MCP transports disagree about discoverable tools.
+- Keep defense in depth: every `tools/call` remains independently authorized at
+  invocation time. Catalog visibility is never authority and cannot substitute for
+  command-risk checks, approval fingerprints, exact-candidate review, or settlement.
+- Do not return denial reasons, bearer values, roles, tenant policy internals, hidden
+  tool names, or an unfiltered count from which hidden tools can be reconstructed.
+- Preserve retired fail-closed verbs and the bounded-autonomy rule: raw
+  `aelyris.request_merge` and `aelyris.review.approve` do not become usable, and the
+  AI receives no caller-authored review/merge shortcut.
+- Done: an authenticated MCP client can enumerate the exact tool subset its current
+  principal may call, while a direct call to a now-hidden tool remains denied by the
+  same Governance owner.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -679,9 +706,10 @@ Proofbook catalog/history `PB-UI-1`, manual gates `PB-UI-2`, input-free start
 Durable step evidence inspection `PB-UI-6`, bounded cap editing `CM-3`, validated
 non-secret string inputs `PB-UI-7`, exact runtime-owned `agentSession` settlement
 `PB-UI-8`, durable fleet cap persistence `CM-4`, and authenticated read-only
-continuity snapshot `RC-1` and payload-free finite continuity changes `RC-2` are also
-complete. Machine-readable observe-principal scope discovery `RC-3` is active;
-private-network exposure, live monitoring, remote approvals/input, SSH attach,
+continuity snapshot `RC-1`, payload-free finite continuity changes `RC-2`, and
+machine-readable observe-principal scope discovery `RC-3` are also complete.
+Principal-scoped MCP tool discovery `AIO-1` is active; private-network exposure, live
+monitoring, remote approvals/input, SSH attach, AI-authored review/merge shortcuts,
 secret-bearing Proofbook starts, broader input types, raw artifact opening/export,
 and other adjacent value remain separately bounded portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;

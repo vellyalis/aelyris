@@ -456,6 +456,141 @@ async fn aelys_continuity_changes_reads_one_authenticated_finite_batch() {
 }
 
 #[tokio::test]
+async fn continuity_whoami_uses_the_authenticated_principal_and_governance_truth() {
+    use aelyris_lib::governance::{
+        AccessControl, AccessDecision, Governance, Principal, PrincipalResolver,
+    };
+
+    struct ObservePolicy;
+    impl AccessControl for ObservePolicy {
+        fn authorize(&self, _actor: &str, capability: &str) -> AccessDecision {
+            if capability == "continuity.changes.read" {
+                AccessDecision::Deny("SECRET_POLICY_REASON".to_string())
+            } else {
+                AccessDecision::Allow
+            }
+        }
+    }
+
+    struct ReaderResolver;
+    impl PrincipalResolver for ReaderResolver {
+        fn resolve(&self, _token: &str) -> Principal {
+            Principal {
+                actor: "reader-agent".to_string(),
+                tenant: "tenant-blue".to_string(),
+                roles: vec!["SECRET_ROLE".to_string()],
+            }
+        }
+    }
+
+    let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+    let event_bus = Arc::new(EventBus::new_durable());
+    event_bus.attach_db(db);
+    let governance =
+        Governance::with_access(Box::new(ObservePolicy)).with_resolver(Box::new(ReaderResolver));
+    let state = ApiState::new(PtyManager::new(), AuthConfig::with_token("s3cret"))
+        .with_event_bus(event_bus)
+        .with_governance(Arc::new(governance));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let serve_state = state.clone();
+    let join = tokio::spawn(async move {
+        let _ = api::serve_on_listener(serve_state, listener).await;
+    });
+    tokio::task::yield_now().await;
+
+    let unauthenticated = client()
+        .get(format!("{base}/continuity/whoami"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+    let response = client()
+        .get(format!("{base}/continuity/whoami"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["schema"], "aelyris.continuity.principal/v1");
+    assert_eq!(body["principal"]["actor"], "reader-agent");
+    assert_eq!(body["principal"]["tenant"], "tenant-blue");
+    assert_eq!(body["transport"]["bindScope"], "loopback-only");
+    assert_eq!(body["transport"]["authentication"], "bearer");
+    assert_eq!(body["transport"]["authenticated"], true);
+    assert_eq!(body["transport"]["readOnlyDiscovery"], true);
+    assert_eq!(body["transport"]["mutationSupported"], false);
+    assert_eq!(body["transport"]["remoteOperationClaim"], false);
+
+    let capabilities = body["capabilities"].as_array().unwrap();
+    assert_eq!(capabilities.len(), 2);
+    assert_eq!(capabilities[0]["name"], "continuity.snapshot.read");
+    assert_eq!(capabilities[0]["authorized"], true);
+    assert_eq!(capabilities[0]["available"], true);
+    assert_eq!(capabilities[0]["invokable"], true);
+    assert_eq!(capabilities[1]["name"], "continuity.changes.read");
+    assert_eq!(capabilities[1]["authorized"], false);
+    assert_eq!(capabilities[1]["available"], true);
+    assert_eq!(capabilities[1]["invokable"], false);
+
+    let serialized = serde_json::to_string(&body).unwrap();
+    for forbidden in [
+        "s3cret",
+        "SECRET_ROLE",
+        "SECRET_POLICY_REASON",
+        "\"roles\":",
+        "\"denialReason\":",
+        "\"token\":",
+    ] {
+        assert!(!serialized.contains(forbidden), "leaked field: {forbidden}");
+    }
+
+    let denied = client()
+        .get(format!("{base}/continuity/changes?afterSeq=0"))
+        .header(AUTHORIZATION, "Bearer s3cret")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
+async fn aelys_continuity_whoami_reads_one_authenticated_identity_projection() {
+    let (base, state, join) = spawn_server(AuthConfig::with_token("s3cret")).await;
+    let output = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio::task::spawn_blocking(move || {
+            std::process::Command::new(env!("CARGO_BIN_EXE_aelys"))
+                .arg("continuity-whoami")
+                .env("AELYRIS_API_URL", &base)
+                .env("AELYRIS_API_TOKEN", "s3cret")
+                .output()
+                .expect("run aelys continuity-whoami")
+        }),
+    )
+    .await
+    .expect("aelys continuity-whoami timed out")
+    .expect("aelys continuity-whoami join failed");
+
+    assert!(
+        output.status.success(),
+        "aelys continuity-whoami failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["schema"], "aelyris.continuity.principal/v1");
+    assert_eq!(body["principal"]["actor"], "operator");
+    assert_eq!(body["principal"]["tenant"], "default");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("s3cret"));
+
+    shutdown_server(&state, join).await;
+}
+
+#[tokio::test]
 async fn daemon_contract_exposes_versioned_capabilities() {
     let temp = tempfile::tempdir().unwrap();
     let pty = PtyManager::new().with_scrollback_dir(temp.path().join("scrollback"));
@@ -536,6 +671,15 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         "authenticated-loopback-finite-payload-free-read-only-no-live-watch-requires-durable-event-owner"
     );
     assert_eq!(body["continuityChangesAvailable"], true);
+    assert_eq!(
+        body["continuityPrincipalSchema"],
+        "aelyris.continuity.principal/v1"
+    );
+    assert_eq!(body["continuityPrincipalEndpoint"], "/continuity/whoami");
+    assert_eq!(
+        body["continuityPrincipalPolicy"],
+        "authenticated-loopback-read-only-governance-evaluated-no-policy-internals"
+    );
     assert!(body["capabilities"]
         .as_array()
         .unwrap()
@@ -546,6 +690,11 @@ async fn daemon_contract_exposes_versioned_capabilities() {
         .unwrap()
         .iter()
         .any(|value| value == "continuity-payload-free-finite-changes"));
+    assert!(body["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "continuity-principal-scope-discovery"));
     assert_eq!(
         body["terminalCorePolicy"]["nativeInputOwner"],
         "rust-native-input-host"

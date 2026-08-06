@@ -14,17 +14,18 @@ merge readiness, and evidence.
 
 ## 0. Claim Boundary
 
-The loopback-only authenticated snapshot and one finite payload-free durable-event
-batch are implemented through the existing embedded API and `aelys` control face.
-They make no remote-operation claim. Private-network exposure, remote UI, remote
-approval/input, SSH attach, and multi-client remote control are not implemented or
-shipped and must not be claimed until their matching verifiers are green.
+The loopback-only authenticated snapshot, one finite payload-free durable-event
+batch, and machine-readable Governance-backed observe-principal scope projection are
+implemented through the existing embedded API and `aelys` control face. They make no
+remote-operation claim. Private-network exposure, remote UI, remote approval/input,
+SSH attach, and multi-client remote control are not implemented or shipped and must
+not be claimed until their matching verifiers are green.
 
 Current safe claim remains narrower: local Rust/Tauri terminal, mux, sidecar,
 visible-agent, MCP, worktree, ownership, review, merge, scoped Proofbook runtime,
-authenticated continuity snapshot, and payload-free finite event changes exist;
-private-network continuity, remote control, SSH attach, and release readiness remain
-gated.
+authenticated continuity snapshot, payload-free finite event changes, and
+Governance-backed observe-scope discovery exist; private-network continuity, remote
+control, SSH attach, and release readiness remain gated.
 
 ## 1. Product Position
 

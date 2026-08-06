@@ -47,6 +47,7 @@ async fn run() -> Result<(), String> {
         }
         "continuity" => continuity(&args[1..]).await,
         "continuity-changes" => continuity_changes(&args[1..]).await,
+        "continuity-whoami" => continuity_whoami(&args[1..]).await,
         "sessions" | "list" => {
             let value = request(Method::GET, "/sessions", None).await?;
             print_json(&value)
@@ -770,6 +771,27 @@ async fn continuity_changes(args: &[String]) -> Result<(), String> {
     print_json(&value)
 }
 
+async fn continuity_whoami(args: &[String]) -> Result<(), String> {
+    continuity_whoami_path(args)?;
+    let value = request_at(
+        &continuity_base_url(),
+        Method::GET,
+        "/continuity/whoami",
+        None,
+    )
+    .await?;
+    print_json(&value)
+}
+
+fn continuity_whoami_path(args: &[String]) -> Result<&'static str, String> {
+    if let Some(argument) = args.first() {
+        return Err(format!(
+            "continuity-whoami accepts no arguments: {argument}"
+        ));
+    }
+    Ok("/continuity/whoami")
+}
+
 fn continuity_changes_path(args: &[String]) -> Result<String, String> {
     let mut after_seq = None;
     let mut limit = None;
@@ -976,7 +998,7 @@ fn print_json(value: &Value) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "aelys commands:\n  health\n  daemon\n  continuity [--project path]\n  continuity-changes --after-seq n [--limit n]\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; continuity commands target embedded http://127.0.0.1:9333, while other commands prefer the sidecar when its token file exists\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the shared hardened Aelyris token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
+        "aelys commands:\n  health\n  daemon\n  continuity [--project path]\n  continuity-changes --after-seq n [--limit n]\n  continuity-whoami\n  sessions\n  mux\n  mux-graph <id>\n  mux-export <workspace> [--out path]\n  mux-import <snapshot-path|-> [--replace]\n  mux-split <workspace> <target-pane> [--axis horizontal|vertical] [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--title name] [--cols n] [--rows n]\n  mux-close-pane <workspace> <pane>\n  mux-swap <workspace> <first-pane> <second-pane>\n  mux-move <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-break-pane <workspace> <pane>\n  mux-join-pane <workspace> <source-pane> <target-pane> [--axis horizontal|vertical]\n  mux-sync-panes <workspace> --on|--off\n  mux-broadcast <workspace> <text...> [--enter]\n  mux-zoom <workspace> <pane>\n  mux-unzoom <workspace> <pane>\n  mux-even <workspace> [--axis horizontal|vertical]\n  mux-rotate <workspace> [--direction next|previous]\n  mux-tiled <workspace>\n  mux-detach <workspace>\n  mux-attach <workspace>\n  create [--shell cmd|powershell|gitbash|wsl] [--cwd path] [--cols n] [--rows n]\n  resize <id> --cols n --rows n\n  send [<target>] <text...> [--enter]\n  capture [<target>] [--lines n] [--raw]\n  mcp <verb> [json-arguments]\n  report --title <text>\n  search <id> <query...> [--lines n] [--limit n] [--case-sensitive]\n  close <id>\n\nEnvironment:\n  AELYRIS_API_URL    overrides API URL; continuity commands target embedded http://127.0.0.1:9333, while other commands prefer the sidecar when its token file exists\n  AELYRIS_API_TOKEN  overrides bearer token; otherwise reads the shared hardened Aelyris token file\n  AELYRIS_TERMINAL_ID default target for in-pane send/capture/report"
     );
 }
 
@@ -1024,6 +1046,13 @@ mod tests {
             continuity_changes_path(&strings(&["--after-seq", "0", "--limit", "1001"])).is_err()
         );
         assert!(continuity_changes_path(&strings(&["--after-seq", "0", "--watch"])).is_err());
+    }
+
+    #[test]
+    fn continuity_whoami_path_is_finite_and_argument_free() {
+        assert_eq!(continuity_whoami_path(&[]).unwrap(), "/continuity/whoami");
+        assert!(continuity_whoami_path(&strings(&["--roles"])).is_err());
+        assert!(continuity_whoami_path(&strings(&["watch"])).is_err());
     }
 
     #[test]
