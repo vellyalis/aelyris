@@ -2,6 +2,7 @@ use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
 
 mod agent_coordination;
+mod approval_request;
 mod approval_resolution;
 mod catalog;
 mod dispatch;
@@ -5487,6 +5488,304 @@ settlement:
             }),
             "overflow must be observable on the system event bus"
         );
+    }
+
+    #[test]
+    fn mcp_approval_request_audit_is_principal_bound_and_value_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{EventBus, EventChannel};
+        use crate::pty::PtyManager;
+        use crate::watchdog::{AutoApproveRule, WatchdogRules};
+
+        fn engine(pattern: &str, approve: bool) -> crate::watchdog::engine::WatchdogEngine {
+            crate::watchdog::engine::WatchdogEngine::new(WatchdogRules {
+                enabled: true,
+                auto_approve: vec![AutoApproveRule {
+                    pattern: pattern.to_string(),
+                    approve,
+                    description: "AIO25_RULE_DESCRIPTION_MUST_NOT_BE_LOGGED".to_string(),
+                }],
+                auto_repair: Default::default(),
+            })
+        }
+
+        fn pending_engine() -> crate::watchdog::engine::WatchdogEngine {
+            crate::watchdog::engine::WatchdogEngine::new(WatchdogRules::default())
+        }
+
+        fn args(value: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+            value.as_object().expect("approval args object").clone()
+        }
+
+        fn pending_item(index: usize) -> McpPendingDecision {
+            McpPendingDecision {
+                id: format!("AIO25_PREFILL_ID_{index}_MUST_NOT_BE_LOGGED"),
+                session_id: format!("AIO25_PREFILL_SESSION_{index}_MUST_NOT_BE_LOGGED"),
+                kind: "permission_required".to_string(),
+                title: "AIO25_PREFILL_TITLE_MUST_NOT_BE_LOGGED".to_string(),
+                summary: None,
+                risk: "medium".to_string(),
+                status: "pending".to_string(),
+            }
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let bus = Arc::new(EventBus::new());
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_event_bus(bus.clone());
+        let schema = input_schema_for_tool_ref("aelyris.request_approval").unwrap();
+        assert!(schema["properties"].get("actor").is_none());
+
+        let actor = "approval-request-operator";
+        let shared_session = "AIO25_SHARED_SESSION_MUST_NOT_BE_LOGGED";
+        let shared_tool = "AIO25_RULE_TARGET_MUST_NOT_BE_LOGGED";
+        let shared_summary = "AIO25_SHARED_SUMMARY_MUST_NOT_BE_LOGGED";
+        let shared_risk = "high";
+        let rule_pattern = "AIO25_RULE_*_MUST_NOT_BE_LOGGED";
+        let shared_args = args(serde_json::json!({
+            "sessionId": shared_session,
+            "tool": shared_tool,
+            "summary": shared_summary,
+            "risk": shared_risk,
+        }));
+
+        let auto_approved = approval_request::request_with_engine(
+            &state,
+            actor,
+            &shared_args,
+            &engine(rule_pattern, true),
+        )
+        .expect("watchdog auto approval");
+        assert_eq!(auto_approved["status"], "auto_approved");
+        assert_eq!(auto_approved["rule"], rule_pattern);
+
+        let auto_denied = approval_request::request_with_engine(
+            &state,
+            actor,
+            &shared_args,
+            &engine(rule_pattern, false),
+        )
+        .expect("watchdog auto denial");
+        assert_eq!(auto_denied["status"], "auto_denied");
+        assert_eq!(auto_denied["rule"], rule_pattern);
+
+        let pending_session = "AIO25_PENDING_SESSION_MUST_NOT_BE_LOGGED";
+        let pending_tool = "AIO25_PENDING_TOOL_MUST_NOT_BE_LOGGED";
+        let pending_summary = "AIO25_PENDING_SUMMARY_MUST_NOT_BE_LOGGED";
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let Json(pending) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.request_approval".to_string(),
+                    arguments: serde_json::json!({
+                        "sessionId": pending_session,
+                        "tool": pending_tool,
+                        "summary": pending_summary,
+                        "risk": "medium",
+                    }),
+                },
+            ))
+            .expect("pending user request through the authenticated dispatcher");
+        assert_eq!(pending["result"]["status"], "pending");
+        assert_eq!(state.mcp_pending.lock().unwrap().len(), 1);
+
+        let overflow_bus = Arc::new(EventBus::new());
+        let overflow_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_event_bus(overflow_bus.clone());
+        {
+            let mut queue = overflow_state.mcp_pending.lock().unwrap();
+            queue.extend((0..MAX_MCP_PENDING).map(pending_item));
+        }
+        let overflow_session = "AIO25_OVERFLOW_SESSION_MUST_NOT_BE_LOGGED";
+        let overflow_tool = "AIO25_OVERFLOW_TOOL_MUST_NOT_BE_LOGGED";
+        let overflow = approval_request::request_with_engine(
+            &overflow_state,
+            actor,
+            &args(serde_json::json!({
+                "sessionId": overflow_session,
+                "tool": overflow_tool,
+                "summary": "AIO25_OVERFLOW_SUMMARY_MUST_NOT_BE_LOGGED",
+                "risk": "critical",
+            })),
+            &pending_engine(),
+        )
+        .expect("overflow request remains queued with observable eviction");
+        assert_eq!(overflow["status"], "pending");
+        let overflow_queue = overflow_state.mcp_pending.lock().unwrap();
+        assert_eq!(overflow_queue.len(), MAX_MCP_PENDING);
+        assert_ne!(
+            overflow_queue.first().unwrap().id,
+            "AIO25_PREFILL_ID_0_MUST_NOT_BE_LOGGED"
+        );
+        drop(overflow_queue);
+        assert!(overflow_bus
+            .by_channel(EventChannel::System)
+            .iter()
+            .any(|event| {
+                event.kind == crate::event_bus::AgentEventKind::EscalationRaised
+                    && event.payload["reason"] == "queue_overflow"
+            }));
+
+        let overflow_failure_bus = Arc::new(EventBus::new_durable());
+        let overflow_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(db.clone()))
+                .with_event_bus(overflow_failure_bus);
+        {
+            let mut queue = overflow_failure_state.mcp_pending.lock().unwrap();
+            queue.extend((0..MAX_MCP_PENDING).map(pending_item));
+        }
+        let overflow_failure_session = "AIO25_EVENT_FAILURE_SESSION_MUST_NOT_BE_LOGGED";
+        let overflow_failure_tool = "AIO25_EVENT_FAILURE_TOOL_MUST_NOT_BE_LOGGED";
+        let overflow_failure = approval_request::request_with_engine(
+            &overflow_failure_state,
+            actor,
+            &args(serde_json::json!({
+                "sessionId": overflow_failure_session,
+                "tool": overflow_failure_tool,
+                "summary": "AIO25_EVENT_FAILURE_SUMMARY_MUST_NOT_BE_LOGGED",
+                "risk": "medium",
+            })),
+            &pending_engine(),
+        );
+        assert!(matches!(overflow_failure, Err(ApiError::Internal(_))));
+        assert_eq!(
+            overflow_failure_state.mcp_pending.lock().unwrap().len(),
+            MAX_MCP_PENDING,
+            "overflow publication failure does not replay or remove the inserted request"
+        );
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_approval_request_authority".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read approval request audit");
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.task_id.is_none()));
+        assert!(rows
+            .iter()
+            .all(|row| row.agent_id.as_deref() == Some(actor)));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            4
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "rejected")
+                .count(),
+            1
+        );
+        for decision in ["auto_approved", "auto_denied", "pending_user"] {
+            assert!(rows
+                .iter()
+                .any(|row| row.redacted_payload_json["decisionClass"] == decision));
+        }
+        let approved_input = rows
+            .iter()
+            .find(|row| row.redacted_payload_json["decisionClass"] == "auto_approved")
+            .and_then(|row| row.redacted_payload_json["inputDigest"].as_str())
+            .expect("auto-approved input digest");
+        let denied_input = rows
+            .iter()
+            .find(|row| row.redacted_payload_json["decisionClass"] == "auto_denied")
+            .and_then(|row| row.redacted_payload_json["inputDigest"].as_str())
+            .expect("auto-denied input digest");
+        assert_eq!(
+            approved_input, denied_input,
+            "watchdog rule outcome is not part of the caller input digest"
+        );
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["queueOverflowed"] == true
+                && row.redacted_payload_json["overflowEventPublished"] == true
+                && row.redacted_payload_json["queueInserted"] == true
+                && row.redacted_payload_json["queueDepth"] == MAX_MCP_PENDING
+        }));
+        assert!(rows.iter().any(|row| {
+            row.redacted_payload_json["rejectionCode"]
+                == "approval_overflow_event_publication_failed"
+                && row.redacted_payload_json["queueInserted"] == true
+                && row.redacted_payload_json["queueOverflowed"] == true
+                && row.redacted_payload_json["overflowEventPublished"] == false
+        }));
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["requestValuesLogged"], false);
+            assert_eq!(row.redacted_payload_json["watchdogRuleLogged"], false);
+            assert_eq!(row.redacted_payload_json["pendingIdentityLogged"], false);
+            for field in ["sessionDigest", "toolDigest", "inputDigest"] {
+                let digest = row.redacted_payload_json[field]
+                    .as_str()
+                    .expect("approval digest");
+                assert_eq!(digest.len(), 64);
+                assert!(digest
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit()));
+            }
+            let audit_text = serde_json::to_string(row).unwrap();
+            let rule_digest = crate::command_risk::approval::command_hash(rule_pattern);
+            for hidden in [
+                shared_session,
+                shared_tool,
+                shared_summary,
+                shared_risk,
+                rule_pattern,
+                "AIO25_RULE_DESCRIPTION_MUST_NOT_BE_LOGGED",
+                pending_session,
+                pending_tool,
+                pending_summary,
+                overflow_session,
+                overflow_tool,
+                overflow_failure_session,
+                overflow_failure_tool,
+                "AIO25_PREFILL_ID_0_MUST_NOT_BE_LOGGED",
+                rule_digest.as_str(),
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio25_approval_audit\n\
+                         BEFORE INSERT ON audit_event_journal\n\
+                         WHEN NEW.kind = 'mcp_approval_request_authority'\n\
+                         BEGIN\n\
+                             SELECT RAISE(ABORT, 'simulated approval request audit failure');\n\
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        let audit_failure_state =
+            ApiState::new(PtyManager::new(), crate::api::AuthConfig::with_token("t"))
+                .with_db(Some(audit_failure_db));
+        let audit_failure = approval_request::request_with_engine(
+            &audit_failure_state,
+            actor,
+            &args(serde_json::json!({
+                "sessionId": "AIO25_AUDIT_FAILURE_SESSION_MUST_NOT_BE_LOGGED",
+                "tool": "AIO25_AUDIT_FAILURE_TOOL_MUST_NOT_BE_LOGGED",
+            })),
+            &pending_engine(),
+        )
+        .expect("audit failure does not replay or reject the pending insertion");
+        assert_eq!(audit_failure["status"], "pending");
+        assert_eq!(audit_failure_state.mcp_pending.lock().unwrap().len(), 1);
     }
 
     /// P5 governance choke point: a denying policy blocks a verb with 403 BEFORE

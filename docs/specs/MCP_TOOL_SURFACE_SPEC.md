@@ -238,6 +238,18 @@ and one-way consumer/event/input digests. Raw consumer ids, event ids, and Event
 payloads are excluded. Audit failure is best-effort after the cursor result and never
 replays or fabricates a second acknowledgement.
 
+`aelyris.request_approval` retains `WatchdogEngine`,
+`control::approval::evaluate`, and the bounded `mcp_pending` queue as the only request
+owners. The authenticated Principal is the initiating actor while session, requested
+tool, summary, risk, matched rule, and pending-item identity remain approval-domain
+values. Auto-approve and auto-deny continue to return the matched rule to the caller;
+pending-user requests still enqueue one bounded item and publish the existing overflow
+event when the oldest item is evicted. Durable authority evidence contains only the
+decision class, queue/overflow outcome, and one-way session/tool/input digests. Raw
+request values, rule names, pending ids, and Event Bus payloads are excluded. An
+overflow-publication failure records that the queue mutation already happened and never
+replays the request or fabricates a second watchdog decision.
+
 `aelyris.orchestrator.step` keeps `control::loop_ports::run_step` as the sole bounded
 multi-owner execution path. Startup admission, Task/Cost/Agent managers, file and
 symbol ownership, Event Bus, Context Store, review/merge authority, durable give-up,
@@ -650,7 +662,10 @@ bounded by `MAX_MCP_PENDING = 500`; durable merge intents remain in
 exceed the cap, the runtime drops the oldest item, logs `tracing::warn!`, and
 publishes a system-channel `EscalationRaised` EventBus event with
 `source:"mcp_pending"`, `reason:"queue_overflow"`, `droppedId`, `newId`, and
-`cap`. Overflow is therefore observable instead of silently consuming RAM.
+`cap`. Overflow is therefore observable instead of silently consuming RAM. The
+Principal-bound request adapter records only whether insertion, eviction, and overflow
+publication occurred; it never copies those ids or the request body into authority
+evidence.
 
 ### 5.3 Versioned schema
 

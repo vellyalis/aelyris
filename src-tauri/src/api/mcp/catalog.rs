@@ -428,7 +428,7 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.request_approval",
-                "description": "Request policy/human approval for a held agent tool call. This never grants approval.",
+                "description": "Request watchdog policy/human approval as the authenticated Principal. Existing auto-approve, auto-deny, and bounded pending-user outcomes remain unchanged; this never grants approval. Durable authority evidence excludes request values, matched rule names, and pending-item identity.",
                 "safety": "GATED",
                 "inputSchema": {
                     "type": "object",

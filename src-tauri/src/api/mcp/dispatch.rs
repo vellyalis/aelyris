@@ -3627,22 +3627,45 @@ fn arg_optional_f64(
         .ok_or_else(|| ApiError::BadRequest(format!("MCP argument `{key}` must be a number")))
 }
 
-pub(super) fn push_pending(
+pub(super) struct PendingPushOutcome {
+    pub item: McpPendingDecision,
+    pub queue_depth: usize,
+    pub overflowed: bool,
+    pub overflow_event_published: Option<bool>,
+}
+
+pub(super) struct PendingPushFailure {
+    pub error: ApiError,
+    pub queue_depth: Option<usize>,
+    pub item_inserted: bool,
+    pub overflowed: bool,
+    pub overflow_event_published: Option<bool>,
+}
+
+pub(super) fn push_pending_detailed(
     state: &ApiState,
     item: McpPendingDecision,
-) -> ApiResult<McpPendingDecision> {
-    let dropped = {
-        let mut pending = state
-            .mcp_pending
-            .lock()
-            .map_err(|_| ApiError::Internal("MCP pending queue lock poisoned".to_string()))?;
+) -> Result<PendingPushOutcome, PendingPushFailure> {
+    let (dropped, queue_depth) = {
+        let mut pending = match state.mcp_pending.lock() {
+            Ok(pending) => pending,
+            Err(_) => {
+                return Err(PendingPushFailure {
+                    error: ApiError::Internal("MCP pending queue lock poisoned".to_string()),
+                    queue_depth: None,
+                    item_inserted: false,
+                    overflowed: false,
+                    overflow_event_published: None,
+                });
+            }
+        };
         let dropped = if pending.len() >= MAX_MCP_PENDING {
             Some(pending.remove(0))
         } else {
             None
         };
         pending.push(item.clone());
-        dropped
+        (dropped, pending.len())
     };
     if let Some(dropped) = dropped {
         tracing::warn!(
@@ -3652,7 +3675,7 @@ pub(super) fn push_pending(
             "MCP pending queue overflow; dropped oldest pending decision"
         );
         if let Some(bus) = state.event_bus.as_ref() {
-            bus.publish(crate::event_bus::AgentEvent::on(
+            if let Err(error) = bus.publish(crate::event_bus::AgentEvent::on(
                 crate::event_bus::AgentEventKind::EscalationRaised,
                 crate::event_bus::EventChannel::System,
                 serde_json::json!({
@@ -3662,11 +3685,44 @@ pub(super) fn push_pending(
                     "newId": item.id,
                     "cap": MAX_MCP_PENDING,
                 }),
-            ))
-            .map_err(|error| ApiError::Internal(error.to_string()))?;
+            )) {
+                return Err(PendingPushFailure {
+                    error: ApiError::Internal(error.to_string()),
+                    queue_depth: Some(queue_depth),
+                    item_inserted: true,
+                    overflowed: true,
+                    overflow_event_published: Some(false),
+                });
+            }
+            return Ok(PendingPushOutcome {
+                item,
+                queue_depth,
+                overflowed: true,
+                overflow_event_published: Some(true),
+            });
         }
+        return Ok(PendingPushOutcome {
+            item,
+            queue_depth,
+            overflowed: true,
+            overflow_event_published: None,
+        });
     }
-    Ok(item)
+    Ok(PendingPushOutcome {
+        item,
+        queue_depth,
+        overflowed: false,
+        overflow_event_published: None,
+    })
+}
+
+pub(super) fn push_pending(
+    state: &ApiState,
+    item: McpPendingDecision,
+) -> ApiResult<McpPendingDecision> {
+    push_pending_detailed(state, item)
+        .map(|outcome| outcome.item)
+        .map_err(|failure| failure.error)
 }
 
 pub(super) fn event_bus_error_response(
@@ -4022,37 +4078,7 @@ pub(super) async fn dispatch_authorized(
         "aelyris.proofbook.reject_gate" => {
             mcp_proofbook_decide_gate(&state, actor, &args, "reject")?
         }
-        "aelyris.request_approval" => {
-            let session_id = arg_string(&args, "sessionId")?;
-            let tool = arg_string(&args, "tool")?;
-            let summary = arg_optional_string(&args, "summary");
-            let risk = arg_optional_string(&args, "risk").unwrap_or_else(|| "medium".to_string());
-            let rules = crate::watchdog::load_watchdog_rules();
-            let engine = crate::watchdog::engine::WatchdogEngine::new(rules);
-            match crate::control::approval::evaluate(&engine, &tool) {
-                crate::control::approval::ApprovalGateDecision::AutoApprove { rule } => {
-                    serde_json::json!({ "intentId": null, "status": "auto_approved", "rule": rule })
-                }
-                crate::control::approval::ApprovalGateDecision::AutoDeny { rule } => {
-                    serde_json::json!({ "intentId": null, "status": "auto_denied", "rule": rule })
-                }
-                crate::control::approval::ApprovalGateDecision::PendingUser => {
-                    let item = push_pending(
-                        &state,
-                        McpPendingDecision {
-                            id: format!("approval:{}", uuid::Uuid::new_v4()),
-                            session_id,
-                            kind: "permission_required".to_string(),
-                            title: format!("Approval requested for {tool}"),
-                            summary,
-                            risk,
-                            status: "pending".to_string(),
-                        },
-                    )?;
-                    serde_json::json!({ "intentId": item.id, "status": "pending", "item": item })
-                }
-            }
-        }
+        "aelyris.request_approval" => super::approval_request::request(&state, actor, &args)?,
         "aelyris.list_pending_approvals" => {
             let pending = state
                 .mcp_pending
