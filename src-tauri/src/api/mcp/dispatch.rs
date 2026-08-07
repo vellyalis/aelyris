@@ -3852,9 +3852,7 @@ pub(super) async fn dispatch_authorized(
 ) -> ApiResult<Json<serde_json::Value>> {
     // A6.4_DISPATCH_TOOL_ARMS_BEGIN
     let result = match name {
-        "terminal.list" => serde_json::json!({
-            "sessions": state.pty.list_info(),
-        }),
+        "terminal.list" => super::terminal_inventory::get(&state),
         "terminal.capture" => {
             let actor = actor.trim();
             if actor.is_empty() {

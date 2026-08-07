@@ -16,6 +16,7 @@ mod proofbook_compat_mutations;
 mod proofbook_runtime_settlement;
 mod review_rejection;
 mod session_lifecycle;
+mod terminal_inventory;
 mod worktree_inventory;
 
 use catalog::{
@@ -459,6 +460,81 @@ mod tests {
             mcp_instructions_for_actor(&state, crate::governance::DEFAULT_ACTOR),
             MCP_INSTRUCTIONS
         );
+    }
+
+    #[test]
+    fn mcp_terminal_inventory_is_value_minimized_deterministic_and_read_only() {
+        use crate::pty::{PtyManager, ShellType, TerminalInfo};
+
+        let secret_cwd_a = "C:/AIO40/SECRET_WORKTREE_A";
+        let secret_cwd_b = "C:/AIO40/SECRET_WORKTREE_B";
+        let secret_spawn_a = "AIO40_SECRET_SPAWN_TOKEN_A";
+        let secret_spawn_b = "AIO40_SECRET_SPAWN_TOKEN_B";
+        let projection = terminal_inventory::project(vec![
+            TerminalInfo {
+                id: "terminal-b".to_string(),
+                short_id: None,
+                shell_type: ShellType::Cmd,
+                cwd: secret_cwd_b.to_string(),
+                uptime_secs: 11,
+                process_id: Some(91_002),
+                spawn_token: secret_spawn_b.to_string(),
+            },
+            TerminalInfo {
+                id: "terminal-a".to_string(),
+                short_id: Some(7),
+                shell_type: ShellType::PowerShell,
+                cwd: secret_cwd_a.to_string(),
+                uptime_secs: 23,
+                process_id: Some(91_001),
+                spawn_token: secret_spawn_a.to_string(),
+            },
+        ]);
+
+        assert_eq!(projection["source"], "rust-pty-manager");
+        assert_eq!(projection["sessionCount"], 2);
+        assert_eq!(projection["exactTerminalIdentityReturned"], true);
+        assert_eq!(projection["filesystemPathsExposed"], false);
+        assert_eq!(projection["processIdentityExposed"], false);
+        assert_eq!(projection["runtimeGenerationExposed"], false);
+        assert_eq!(projection["readOnly"], true);
+        assert_eq!(projection["sessions"][0]["id"], "terminal-a");
+        assert_eq!(projection["sessions"][0]["shortId"], 7);
+        assert_eq!(projection["sessions"][0]["shellType"], "powershell");
+        assert_eq!(projection["sessions"][0]["uptimeSecs"], 23);
+        assert_eq!(projection["sessions"][1]["id"], "terminal-b");
+        assert!(projection["sessions"][1].get("shortId").is_none());
+        assert_eq!(projection["sessions"][1]["shellType"], "cmd");
+
+        let serialized = serde_json::to_string(&projection).expect("serialize inventory");
+        for forbidden in [
+            secret_cwd_a,
+            secret_cwd_b,
+            secret_spawn_a,
+            secret_spawn_b,
+            "\"cwd\"",
+            "\"processId\"",
+            "\"process_id\"",
+            "\"spawnToken\"",
+            "\"spawn_token\"",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "terminal inventory exposed {forbidden}"
+            );
+        }
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled());
+        let listed = scoped_tools_list_value(&state, "terminal-reader");
+        let tool = listed["tools"]
+            .as_array()
+            .expect("tool catalog")
+            .iter()
+            .find(|tool| tool["name"] == "terminal.list")
+            .expect("terminal list is principal-visible");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["outputSensitivity"], "value-minimized-coordination");
+        assert_eq!(tool["readOnly"], true);
     }
 
     #[test]

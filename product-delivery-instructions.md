@@ -3,10 +3,10 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `GMV CLAIM CONFIRMATION`.
-ACTIVE SLICE: `GMV-3`.
-LAST COMPLETED SLICE: `AIO-39`.
-NEXT IMPLEMENTATION SLICE: `GMV-3`.
+CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
+ACTIVE SLICE: `AIO-41`.
+LAST COMPLETED SLICE: `AIO-40`.
+NEXT IMPLEMENTATION SLICE: `AIO-41`.
 
 ```yaml
 continuation_contract:
@@ -97,6 +97,8 @@ Current portfolio classification:
 | MCP path-minimized worktree inventory | **COMPLETE** | Worktree inventory now returns exact name/branch/HEAD/status in stable order plus a repository digest, without echoing repository or absolute worktree paths |
 | MCP path-minimized worktree mutation results | **COMPLETE** | Create reuses the safe inventory projection and remove returns exact worktree identity/deletion intent plus repository digest, without repository or absolute worktree paths |
 | MCP principal-bound terminal capture evidence | **COMPLETE** | Bounded raw scrollback remains unredacted by design, while discovery/results state the sensitive read-only boundary and accepted/rejected reads retain Principal-bound value-free evidence |
+| MCP value-minimized terminal inventory | **COMPLETE** | `terminal.list` now returns deterministic exact terminal identity, optional short identity, shell type, and uptime without cwd, OS process identity, or PTY generation tokens |
+| MCP value-minimized mux topology | **NOW** | `mux.workspace.get` still serializes the full Rust graph, including paths, titles, client records, process ids, and agent/project metadata that are unnecessary for pane coordination |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -249,11 +251,10 @@ architecture phase. The local Codex account refused that confirmation on 2026-08
 because its usage window is limited until 2026-08-08; this external quota does not
 reopen settlement, CI, verifier, or framework work.
 
-Current frontier after `AIO-39`: run the existing real-Codex confirmation when the
-provider window reopens on 2026-08-08, then perform portfolio selection from fresh
-user/runtime evidence. Until that external check is available, `GMV-3` owns no new
-repository implementation, verifier family, framework expansion, or substitute
-provider claim.
+The real-Codex confirmation remains externally blocked until the provider window
+reopens on 2026-08-08. The owner has explicitly authorized other bounded product
+polish meanwhile, so `AIO-40` is the sole repo-mutating lane. It does not substitute
+for, weaken, or manufacture the pending `GMV-3` provider claim.
 
 On 2026-08-05 the ChatGPT controller also ran the existing fresh-profile journey
 with an isolated deterministic Codex-compatible provider double. That run exercised
@@ -1715,6 +1716,53 @@ Status: **COMPLETE**.
 - Done: an authorized AI can deliberately inspect bounded raw terminal output, while
   the read is attributable and its non-redacted data boundary is explicit.
 
+### AIO-40 — MCP Value-Minimized Terminal Inventory
+
+Capability target: `Product-Accessible` authenticated deterministic terminal discovery
+without machine-local path, process, or PTY generation exposure.
+Status: **COMPLETE**.
+
+- Keep `terminal.list` over the existing native `PtyManager::list_info`, Governance,
+  and principal-scoped discovery. Do not add a terminal registry, liveness owner,
+  cache, process scanner, path resolver, or alternate inventory path.
+- Return exact terminal id, optional short id, shell type, and uptime only, sorted by
+  exact terminal identity for deterministic coordination. Exact identity remains
+  because separately authorized capture/input operations consume it.
+- Do not serialize cwd, OS process id, spawn token, environment values, command,
+  prompt, scrollback, or PTY internals through this value-minimized read.
+- Return explicit `source`, `exactTerminalIdentityReturned:true`,
+  `filesystemPathsExposed:false`, `processIdentityExposed:false`,
+  `runtimeGenerationExposed:false`, and `readOnly:true` metadata. Discovery classifies
+  the surface as observe-only value-minimized coordination.
+- Reading the inventory must not create, close, resize, capture, attach, refresh, or
+  otherwise mutate a terminal.
+- Done: an authenticated AI can select the exact live terminal needed for a separately
+  authorized operation without receiving host paths, process ids, or generation tokens.
+
+### AIO-41 — MCP Value-Minimized Mux Topology
+
+Capability target: `Product-Accessible` authenticated deterministic mux coordination
+without serializing machine-local paths, process identity, client records, or agent and
+project payloads.
+Status: **ACTIVE**.
+
+- Keep `mux.workspaces.list` and `mux.workspace.get` over the existing Rust `MuxManager`,
+  graph validation, Governance, and principal-scoped discovery. Do not add a second mux
+  graph, topology store, cache, layout owner, path resolver, or liveness scanner.
+- Preserve exact workspace/window/tab/pane identity, active selections, tab layout,
+  synchronized-pane state, pane lifecycle/role, exact terminal binding, dimensions,
+  and aggregate counts needed by separately authorized coordination operations.
+- Do not serialize workspace/project/worktree/cwd paths, user-authored titles, shell
+  command labels, OS process ids, client ids/timestamps, task/workflow ids, agent ids,
+  provider names, permission profiles, prompts, commands, or environment values.
+- Return stable identity ordering and explicit `source`, `readOnly:true`, and exposure
+  flags. Unknown workspaces remain typed failures rather than empty successful graphs.
+- Reading either projection must not attach, detach, create, close, resize, focus,
+  reorder, capture, write to, persist, or otherwise mutate a mux or PTY owner.
+- Done: an authenticated AI can understand the exact live pane topology and target a
+  separately authorized operation without receiving host paths or unrelated runtime
+  and agent metadata.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -1756,8 +1804,10 @@ projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. M
 deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
 pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
-also complete. MCP principal-bound terminal capture evidence `AIO-39` is also
-complete. `GMV-3` live-provider claim confirmation is the active frontier;
+also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
+value-minimized terminal inventory `AIO-40` are also complete. MCP value-minimized
+mux topology `AIO-41` is active while the `GMV-3` live-provider claim confirmation
+remains externally blocked;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

@@ -54,7 +54,10 @@ fn build_tools_list_value() -> serde_json::Value {
         "tools": [
             {
                 "name": "terminal.list",
-                "description": "List live native PTY sessions.",
+                "description": "List a deterministic, value-minimized inventory of live native PTY sessions. Exact terminal identity, optional short identity, shell type, and uptime remain available while cwd, OS process identity, and runtime generation tokens are excluded.",
+                "accessMode": "observe-only",
+                "outputSensitivity": "value-minimized-coordination",
+                "readOnly": true,
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {

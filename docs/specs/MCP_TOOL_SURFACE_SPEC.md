@@ -128,6 +128,13 @@ after a successful capture is logged without replaying the PTY read or replacing
 already obtained result; invalid/stale identities, Governance denial, and PTY errors
 remain typed failures rather than empty captures.
 
+`terminal.list` is the value-minimized discovery companion to that raw read. It uses
+the existing `PtyManager::list_info` owner and returns exact terminal identity,
+optional short identity, shell type, and uptime in deterministic identity order.
+Machine-local cwd values, OS process ids, and PTY spawn-generation tokens are excluded
+from the MCP projection. The result states its Rust PTY source and read-only boundary;
+it creates no registry, cache, terminal owner, or alternate liveness model.
+
 `mux.workspace.safeInput` and REST `/mux/workspaces/{id}/input` both pass the
 authenticated Principal into the one `TerminalInputAuthority` envelope. Neither
 surface accepts an actor field; command-risk, approval, target-scope, quarantine,
