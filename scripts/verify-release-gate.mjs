@@ -5,7 +5,13 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmInvocation =
+  process.platform === "win32"
+    ? {
+        command: process.env.ComSpec ?? "cmd.exe",
+        prefixArgs: ["/d", "/s", "/c", "corepack", "pnpm"],
+      }
+    : { command: "pnpm", prefixArgs: [] };
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const execFileAsync = promisify(execFile);
 const args = new Set(process.argv.slice(2));
@@ -57,7 +63,7 @@ const requiredReleaseFiles = [
 ];
 
 const requiredPackageScripts = {
-  "tauri:build:dist": "node scripts/build-pty-sidecar.mjs && tauri build --config src-tauri/tauri.dist.conf.json --no-sign",
+  "tauri:build:dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-dist-windows.ps1",
   "verify:dist": "node scripts/verify-dist-artifacts.mjs",
   "verify:release:doctor": "node scripts/release-doctor.mjs",
   "verify:release:preflight": "node scripts/verify-release-gate.mjs --preflight",
@@ -182,6 +188,10 @@ async function run(label, command, commandArgs) {
   console.log(`[release] ${label} passed in ${seconds}s`);
 }
 
+async function runPnpm(label, args) {
+  await run(label, pnpmInvocation.command, [...pnpmInvocation.prefixArgs, ...args]);
+}
+
 async function verifyReleaseContract() {
   const failures = [];
   const missingFiles = [];
@@ -260,34 +270,42 @@ async function main() {
   for (const script of syntaxCheckedScripts) {
     await run(`Node syntax check: ${script}`, "node", ["--check", script]);
   }
-  await run("Release Doctor", pnpm, ["verify:release:doctor"]);
+  await runPnpm("Release Doctor", ["verify:release:doctor"]);
 
   if (preflightOnly) {
     console.log("\n[release] Preflight passed.");
-    console.log("[release] Run `pnpm.cmd verify:release` for the full TypeScript, Vitest, and artifact gate.");
+    console.log("[release] Run `corepack pnpm verify:release` for the full TypeScript, Vitest, and artifact gate.");
     return;
   }
 
-  await run("TypeScript", pnpm, ["exec", "tsc", "--noEmit"]);
+  await runPnpm("TypeScript", ["exec", "tsc", "--noEmit"]);
   await run("Rust backend check", cargo, ["check", "--manifest-path", "src-tauri/Cargo.toml", "--lib"]);
   if (withIme) {
-    await run("Native IME CDP verification", pnpm, ["verify:ime"]);
+    await runPnpm("Native IME CDP verification", ["verify:ime"]);
   } else {
     console.log("\n[release] Native IME CDP verification skipped.");
-    console.log("[release] Run `pnpm.cmd verify:release:ime` with Tauri dev/CDP running before a human handoff build.");
+    console.log(
+      "[release] Run `corepack pnpm verify:release:ime` with Tauri dev/CDP running before a human handoff build.",
+    );
   }
 
-  await run("Mux live restore smoke", pnpm, ["verify:mux-live"]);
-  await run("Mux performance smoke", pnpm, ["verify:mux-performance"]);
-  await run("Scrollback capture/search smoke", pnpm, ["verify:scrollback-gates"]);
-  await run("Focused workstation Vitest", pnpm, ["exec", "vitest", "run", ...focusedVitestSuites, "--reporter=dot"]);
+  await runPnpm("Mux live restore smoke", ["verify:mux-live"]);
+  await runPnpm("Mux performance smoke", ["verify:mux-performance"]);
+  await runPnpm("Scrollback capture/search smoke", ["verify:scrollback-gates"]);
+  await runPnpm("Focused workstation Vitest", [
+    "exec",
+    "vitest",
+    "run",
+    ...focusedVitestSuites,
+    "--reporter=dot",
+  ]);
   if (skipFullVitest) {
     console.log("\n[release] Full frontend Vitest explicitly skipped.");
   } else {
-    await run("Full frontend Vitest", pnpm, ["test", "--", "--reporter=dot"]);
+    await runPnpm("Full frontend Vitest", ["test", "--", "--reporter=dot"]);
   }
 
-  await run("Distribution artifacts", pnpm, ["verify:dist"]);
+  await runPnpm("Distribution artifacts", ["verify:dist"]);
 
   console.log("\n[release] Release gate passed.");
 }
