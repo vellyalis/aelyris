@@ -4000,11 +4000,16 @@ pub(super) async fn dispatch_authorized(
             let branch_name = arg_string(&args, "branchName")?;
             crate::control::worktree::validate_branch(&branch_name)
                 .map_err(ApiError::BadRequest)?;
-            let path = crate::control::worktree::predict_path(&repo_path, &branch_name);
+            let _predicted_path = crate::control::worktree::predict_path(&repo_path, &branch_name);
             serde_json::json!({
-                "repoPath": repo_path,
+                "repositoryDigest": super::worktree_inventory::repository_digest(&repo_path),
                 "branchName": branch_name,
-                "path": path,
+                "source": "git-worktree-owner",
+                "pathPredicted": true,
+                "pathReturned": false,
+                "repositoryPathExposed": false,
+                "worktreePathExposed": false,
+                "readOnly": true,
             })
         }
         "aelyris.worktree.list" => {

@@ -2515,6 +2515,111 @@ mod tests {
         assert!(scoped_tool_names(&state, "blocked-worktree-observer").is_empty());
     }
 
+    #[test]
+    fn mcp_worktree_path_prediction_is_path_free_deterministic_and_read_only() {
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::PtyManager;
+
+        struct WorktreePredictionPolicy;
+        impl AccessControl for WorktreePredictionPolicy {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "worktree-planner" && verb == "aelyris.worktree.predictPath" {
+                    AccessDecision::Allow
+                } else {
+                    AccessDecision::Deny("restricted".to_string())
+                }
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("temporary worktree prediction root");
+        let repo = temp
+            .path()
+            .join("AIO43_REPOSITORY_PATH_MUST_NOT_BE_EXPOSED");
+        std::fs::create_dir_all(&repo).expect("create repository-shaped directory");
+        let repo_path = repo.to_string_lossy().to_string();
+        let branch_name = "agent/aio43-path-free-prediction";
+        let predicted_path = crate::control::worktree::predict_path(&repo_path, branch_name)
+            .to_string_lossy()
+            .to_string();
+        assert!(!std::path::Path::new(&predicted_path).exists());
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_governance(Arc::new(Governance::with_access(Box::new(
+                WorktreePredictionPolicy,
+            ))));
+        let listed = scoped_tools_list_value(&state, "worktree-planner");
+        let tool = listed["tools"]
+            .as_array()
+            .expect("tool catalog")
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.worktree.predictPath")
+            .expect("path prediction is principal-visible");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["outputSensitivity"], "value-minimized-coordination");
+        assert_eq!(tool["repositoryPathExposed"], false);
+        assert_eq!(tool["worktreePathExposed"], false);
+        assert_eq!(tool["readOnly"], true);
+
+        let schema = input_schema_for_tool_ref("aelyris.worktree.predictPath").unwrap();
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["repoPath", "branchName"])
+        );
+        assert_eq!(schema["additionalProperties"], false);
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let call = |state: &ApiState, actor: &str, branch: &str| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "aelyris.worktree.predictPath".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path.clone(),
+                        "branchName": branch,
+                    }),
+                },
+            ))
+        };
+        let Json(first) =
+            call(&state, "worktree-planner", branch_name).expect("path-free worktree prediction");
+        let Json(second) = call(&state, "worktree-planner", branch_name)
+            .expect("deterministic path-free worktree prediction");
+        assert_eq!(first["result"], second["result"]);
+        let result = &first["result"];
+        assert_eq!(result["branchName"], branch_name);
+        assert_eq!(result["source"], "git-worktree-owner");
+        assert_eq!(result["pathPredicted"], true);
+        assert_eq!(result["pathReturned"], false);
+        assert_eq!(result["repositoryPathExposed"], false);
+        assert_eq!(result["worktreePathExposed"], false);
+        assert_eq!(result["readOnly"], true);
+        assert!(result.get("repoPath").is_none());
+        assert!(result.get("path").is_none());
+        let digest = result["repositoryDigest"]
+            .as_str()
+            .expect("repository digest");
+        assert_eq!(digest.len(), 64);
+        assert!(digest
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()));
+        let serialized = serde_json::to_string(result).unwrap();
+        assert!(!serialized.contains(&repo_path));
+        assert!(!serialized.contains(&predicted_path));
+        assert!(!std::path::Path::new(&predicted_path).exists());
+
+        assert!(matches!(
+            call(&state, "worktree-planner", "../main"),
+            Err(ApiError::BadRequest(_))
+        ));
+        assert!(matches!(
+            call(&state, "blocked-worktree-planner", branch_name),
+            Err(ApiError::Forbidden(_))
+        ));
+        assert!(scoped_tool_names(&state, "blocked-worktree-planner").is_empty());
+        assert!(!std::path::Path::new(&predicted_path).exists());
+    }
+
     fn dispatch_tool_names_from_source(source: &str) -> Result<Vec<String>, String> {
         const BEGIN: &str = "// A6.4_DISPATCH_TOOL_ARMS_BEGIN";
         const END: &str = "// A6.4_DISPATCH_TOOL_ARMS_END";

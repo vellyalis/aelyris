@@ -190,6 +190,13 @@ projection; accepted remove responses retain only exact worktree name, deletion 
 result, and repository digest. Neither response echoes repository or absolute worktree
 paths.
 
+`aelyris.worktree.predictPath` keeps the compatibility verb and existing
+`control::worktree::predict_path` owner, but no longer returns the input repository or
+the machine-local predicted absolute path. It returns the exact branch identity, a
+stable one-way repository digest, and explicit path-withheld/read-only metadata. The
+call validates the branch and computes placement transiently without creating a
+worktree, path registry, resolver, cache, or second Git owner.
+
 `aelyris.task.create` and `aelyris.task.transition` keep the Task Manager as the sole
 mutation owner and preserve TaskCreated/ReviewRequired/TaskCompleted Event Bus
 publication. The authenticated Principal is the initiating actor; task `owner`, model,

@@ -127,8 +127,13 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.worktree.predictPath",
-                "description": "Predict the isolated worktree path for a branch.",
+                "description": "Confirm deterministic Git-owned worktree placement for an exact branch without returning the input repository path or predicted absolute worktree path. Read-only value-minimized coordination.",
                 "safety": "FREE",
+                "accessMode": "observe-only",
+                "outputSensitivity": "value-minimized-coordination",
+                "repositoryPathExposed": false,
+                "worktreePathExposed": false,
+                "readOnly": true,
                 "inputSchema": {
                     "type": "object",
                     "required": ["repoPath", "branchName"],

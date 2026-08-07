@@ -5,7 +5,7 @@ PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `GMV CLAIM CONFIRMATION`.
 ACTIVE SLICE: `GMV-3`.
-LAST COMPLETED SLICE: `AIO-42`.
+LAST COMPLETED SLICE: `AIO-43`.
 NEXT IMPLEMENTATION SLICE: `GMV-3`.
 
 ```yaml
@@ -100,6 +100,7 @@ Current portfolio classification:
 | MCP value-minimized terminal inventory | **COMPLETE** | `terminal.list` now returns deterministic exact terminal identity, optional short identity, shell type, and uptime without cwd, OS process identity, or PTY generation tokens |
 | MCP value-minimized mux topology | **COMPLETE** | Mux discovery now retains exact identities, active selections, layout, pane lifecycle/role, and terminal binding while excluding paths, titles, process/client records, and agent/project payloads |
 | MCP scoped GhostDiff inspection | **COMPLETE** | Exact-layer summary reads exclude absolute source metadata and unrelated layers; explicit file reads mark raw-source sensitivity, and unsupported target comparison now fails closed |
+| MCP path-free worktree prediction | **COMPLETE** | Compatibility prediction now confirms deterministic Git-owned placement with exact branch identity and a repository digest while withholding repository and absolute worktree paths |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1791,6 +1792,26 @@ Status: **COMPLETE**.
 - Done: an authenticated AI can inspect one exact agent-owned diff without receiving
   unrelated layer metadata or mistaking an unapplied target comparison for real output.
 
+### AIO-43 — MCP Path-Free Worktree Prediction
+
+Capability target: `Product-Accessible` authenticated deterministic worktree placement
+confirmation without returning machine-local repository or predicted worktree paths.
+Status: **COMPLETE**.
+
+- Keep `aelyris.worktree.predictPath` over the existing branch validator,
+  `control::worktree::predict_path`, Governance, and principal-scoped discovery. Do not
+  add a path registry, resolver, cache, worktree owner, or alternate Git placement rule.
+- Preserve the exact validated branch identity and compute the deterministic placement
+  transiently, but return only a stable one-way repository digest and explicit
+  `pathPredicted:true`, `pathReturned:false`, `repositoryPathExposed:false`,
+  `worktreePathExposed:false`, and `readOnly:true` metadata.
+- Do not echo the input repository path, serialize the predicted absolute path, create
+  directories or worktrees, inspect Git state, or mutate any Git/worktree owner.
+- Invalid branch identity and Governance denial remain typed failures rather than a
+  successful path-free result.
+- Done: compatibility callers can confirm that the shared Git owner accepted an exact
+  branch for deterministic placement without receiving host filesystem locations.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -1834,7 +1855,8 @@ pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inv
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
 also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
 value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
-`AIO-41`, and MCP scoped GhostDiff inspection `AIO-42` are also complete. The
+`AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, and MCP path-free worktree
+prediction `AIO-43` are also complete. The
 `GMV-3` live-provider claim confirmation is again the active frontier and remains
 externally blocked;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
