@@ -28,6 +28,7 @@ function check(id, passed, detail) {
 }
 
 const nativeInput = source("src-tauri/src/term/native_input.rs");
+const nativeInputLf = nativeInput.replace(/\r\n?/g, "\n");
 const commands = source("src-tauri/src/ipc/commands.rs");
 const imeCommands = source("src-tauri/src/ipc/ime_commands.rs");
 const lib = source("src-tauri/src/lib.rs");
@@ -87,6 +88,27 @@ const nativeHwndPasteLiveDegradedFresh =
   nativeHwndPasteLive?.degraded === true &&
   nativeHwndPasteLiveSourceFresh;
 const nativeHwndPasteLiveFresh = nativeHwndPasteLiveStrictFresh || nativeHwndPasteLiveDegradedFresh;
+const clipboardRetryCount = Number(
+  /const CLIPBOARD_OPEN_RETRY_COUNT: usize = (\d+);/.exec(nativeInputLf)?.[1],
+);
+const clipboardRetryDelayMs = Number(
+  /const CLIPBOARD_OPEN_RETRY_DELAY_MS: u64 = (\d+);/.exec(nativeInputLf)?.[1],
+);
+const workerClipboardRetryBounded =
+  Number.isInteger(clipboardRetryCount) &&
+  Number.isInteger(clipboardRetryDelayMs) &&
+  clipboardRetryCount >= 2 &&
+  clipboardRetryCount <= 12 &&
+  clipboardRetryDelayMs >= 1 &&
+  (clipboardRetryCount - 1) * clipboardRetryDelayMs <= 100 &&
+  nativeInputLf.includes(
+    "read_native_clipboard_text_with_attempts(\n            CLIPBOARD_OPEN_RETRY_COUNT,\n            CLIPBOARD_OPEN_RETRY_DELAY_MS,\n        )",
+  );
+const windowProcedureClipboardReadIsNonblocking =
+  nativeInputLf.includes("WM_PASTE => {\n            let guard = unsafe { read_native_clipboard_text_nonblocking() }") &&
+  nativeInputLf.includes(
+    "unsafe fn read_native_clipboard_text_nonblocking() -> Result<String, String> {\n    unsafe { read_native_clipboard_text_with_attempts(1, 0) }\n}",
+  );
 
 const frontendNativeDefault =
   canvasIme.includes("NATIVE_INPUT_SURFACE_DEFAULT_ENABLED = true") &&
@@ -222,16 +244,13 @@ const checks = [
   ),
   check(
     "surface-paste-guard-bounded-clipboard-retry",
-    nativeInput.includes("CLIPBOARD_OPEN_RETRY_COUNT") &&
-      nativeInput.includes("CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
-      nativeInput.includes("read_native_clipboard_text_with_attempts(") &&
-      nativeInput.includes("CLIPBOARD_OPEN_RETRY_COUNT,\n            CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
-      nativeInput.includes("for attempt in 0..attempts") &&
-      nativeInput.includes("std::thread::sleep(std::time::Duration::from_millis(delay_ms))") &&
-      nativeInput.includes("CLIPBOARD_OPEN_RETRY_DELAY_MS") &&
+    workerClipboardRetryBounded &&
+      windowProcedureClipboardReadIsNonblocking &&
+      nativeInputLf.includes("for attempt in 0..attempts") &&
+      nativeInputLf.includes("std::thread::sleep(std::time::Duration::from_millis(delay_ms))") &&
       !nativeInput.includes("for _ in 0..12") &&
       !nativeInput.includes("from_millis(16)"),
-    "native HWND paste tolerates transient Windows clipboard contention with a bounded retry instead of a long UI-thread stall",
+    "worker-thread clipboard reads use a bounded retry while WM_PASTE stays nonblocking on the native window message thread",
   ),
   check(
     "behavioral-native-hwnd-paste-live",
