@@ -144,6 +144,15 @@ process ids, client records, task/workflow data, and agent/provider/permission p
 are excluded. Unknown workspaces remain typed failures, and neither read mutates or
 persists mux/PTY state.
 
+`aelyris.agent_diff` reads one exact `LayerRegistry` identity rather than serializing
+the full GhostDiff snapshot. Its summary retains layer kind, completion/time/counts,
+and sorted repo-relative file paths while excluding absolute source/repository/worktree
+paths, branches, tint payloads, terminal grids, and unrelated layers. An explicitly
+requested repo-relative file returns the existing raw `FileDelta` unchanged and marks
+`rawSourceReturned` plus `sensitiveOutputPossible`; summary-only reads mark both false.
+The adapter rejects `against=target` because no existing GhostDiff owner applies that
+comparison, and missing layers/files remain typed failures instead of empty results.
+
 `mux.workspace.safeInput` and REST `/mux/workspaces/{id}/input` both pass the
 authenticated Principal into the one `TerminalInputAuthority` envelope. Neither
 surface accepts an actor field; command-risk, approval, target-scope, quarantine,

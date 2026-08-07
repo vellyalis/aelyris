@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 mod agent_activity_read;
 mod agent_coordination;
+mod agent_diff_read;
 mod approval_request;
 mod approval_resolution;
 mod catalog;
@@ -761,6 +762,209 @@ mod tests {
             assert_eq!(tool["outputSensitivity"], "value-minimized-coordination");
             assert_eq!(tool["readOnly"], true);
         }
+    }
+
+    #[test]
+    fn mcp_agent_diff_is_exact_layer_scoped_and_honest_about_raw_source() {
+        use std::path::PathBuf;
+
+        use crate::ghostdiff::{DiffHunk, FileDelta, HunkLine, LayerRegistry, LayerTint};
+        use crate::pty::PtyManager;
+
+        let target_layer_id = "aio42-target-layer";
+        let unrelated_layer_id = "AIO42_UNRELATED_LAYER_MUST_NOT_BE_RETURNED";
+        let target_worktree = "C:/AIO42/SECRET_TARGET_WORKTREE";
+        let target_repo = "C:/AIO42/SECRET_TARGET_REPOSITORY";
+        let target_branch = "AIO42_SECRET_TARGET_BRANCH";
+        let target_tint = "AIO42_SECRET_TARGET_TINT";
+        let unrelated_worktree = "C:/AIO42/SECRET_UNRELATED_WORKTREE";
+        let unrelated_repo = "C:/AIO42/SECRET_UNRELATED_REPOSITORY";
+        let unrelated_branch = "AIO42_SECRET_UNRELATED_BRANCH";
+        let raw_base = "AIO42_RAW_BASE_SOURCE";
+        let raw_head = "AIO42_RAW_HEAD_SOURCE";
+        let selected_path = "src/selected.rs";
+
+        let layers = Arc::new(LayerRegistry::new());
+        layers
+            .register_worktree_layer(
+                target_layer_id.to_string(),
+                PathBuf::from(target_worktree),
+                target_branch.to_string(),
+                PathBuf::from(target_repo),
+                LayerTint {
+                    role_color: "#123456".to_string(),
+                    role_label: target_tint.to_string(),
+                },
+                "target-base-sha".to_string(),
+                20,
+            )
+            .expect("register target layer");
+        layers
+            .refresh(
+                target_layer_id,
+                vec![
+                    FileDelta {
+                        path: "z-last.rs".to_string(),
+                        hunks: Vec::new(),
+                        base_content: "z-base".to_string(),
+                        head_content: "z-head".to_string(),
+                    },
+                    FileDelta {
+                        path: selected_path.to_string(),
+                        hunks: vec![DiffHunk {
+                            base_start: 1,
+                            base_len: 1,
+                            head_start: 1,
+                            head_len: 1,
+                            lines: vec![
+                                HunkLine::Remove(raw_base.to_string()),
+                                HunkLine::Add(raw_head.to_string()),
+                            ],
+                        }],
+                        base_content: raw_base.to_string(),
+                        head_content: raw_head.to_string(),
+                    },
+                ],
+            )
+            .expect("refresh target layer");
+        layers
+            .register_worktree_layer(
+                unrelated_layer_id.to_string(),
+                PathBuf::from(unrelated_worktree),
+                unrelated_branch.to_string(),
+                PathBuf::from(unrelated_repo),
+                LayerTint {
+                    role_color: "#654321".to_string(),
+                    role_label: "AIO42_SECRET_UNRELATED_TINT".to_string(),
+                },
+                "unrelated-base-sha".to_string(),
+                10,
+            )
+            .expect("register unrelated layer");
+        layers
+            .refresh(
+                unrelated_layer_id,
+                vec![FileDelta {
+                    path: "AIO42_UNRELATED_FILE.rs".to_string(),
+                    hunks: Vec::new(),
+                    base_content: "AIO42_UNRELATED_BASE".to_string(),
+                    head_content: "AIO42_UNRELATED_HEAD".to_string(),
+                }],
+            )
+            .expect("refresh unrelated layer");
+
+        let before = layers.snapshot();
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled())
+            .with_ghost_layers(layers.clone());
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let call = |arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "diff-reader",
+                ToolCallBody {
+                    name: "aelyris.agent_diff".to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let Json(summary) = call(serde_json::json!({
+            "sessionId": target_layer_id,
+        }))
+        .expect("read exact layer summary");
+        assert_eq!(summary["result"]["source"], "ghostdiff-layer-registry");
+        assert_eq!(summary["result"]["layer"]["id"], target_layer_id);
+        assert_eq!(summary["result"]["layer"]["sourceKind"], "worktree");
+        assert_eq!(summary["result"]["layer"]["fileCount"], 2);
+        assert_eq!(summary["result"]["layer"]["hunkCount"], 1);
+        assert_eq!(
+            summary["result"]["layer"]["filePaths"],
+            serde_json::json!([selected_path, "z-last.rs"])
+        );
+        assert!(summary["result"].get("file").is_none());
+        assert_eq!(summary["result"]["rawSourceReturned"], false);
+        assert_eq!(summary["result"]["sensitiveOutputPossible"], false);
+        assert_eq!(summary["result"]["repoRelativePathsReturned"], true);
+        assert_eq!(summary["result"]["filesystemPathsExposed"], false);
+        assert_eq!(summary["result"]["unrelatedLayersExposed"], false);
+        assert_eq!(summary["result"]["readOnly"], true);
+        let summary_text = serde_json::to_string(&summary["result"]).expect("summary json");
+        for forbidden in [
+            unrelated_layer_id,
+            target_worktree,
+            target_repo,
+            target_branch,
+            target_tint,
+            unrelated_worktree,
+            unrelated_repo,
+            unrelated_branch,
+            "AIO42_SECRET_UNRELATED_TINT",
+            "AIO42_UNRELATED_FILE.rs",
+            "AIO42_UNRELATED_BASE",
+            raw_base,
+            raw_head,
+            "\"tint\"",
+            "\"branch\"",
+            "\"repoPath\"",
+            "\"worktreePath\"",
+        ] {
+            assert!(
+                !summary_text.contains(forbidden),
+                "summary exposed {forbidden}"
+            );
+        }
+
+        let Json(raw_file) = call(serde_json::json!({
+            "sessionId": target_layer_id,
+            "path": selected_path,
+            "against": "base",
+        }))
+        .expect("read exact raw file delta");
+        assert_eq!(raw_file["result"]["file"]["path"], selected_path);
+        assert_eq!(raw_file["result"]["file"]["baseContent"], raw_base);
+        assert_eq!(raw_file["result"]["file"]["headContent"], raw_head);
+        assert_eq!(raw_file["result"]["rawSourceReturned"], true);
+        assert_eq!(raw_file["result"]["sensitiveOutputPossible"], true);
+        assert_eq!(raw_file["result"]["readOnly"], true);
+
+        assert!(matches!(
+            call(serde_json::json!({ "sessionId": "missing-layer" })),
+            Err(ApiError::NotFound(value)) if value.contains("missing-layer")
+        ));
+        assert!(matches!(
+            call(serde_json::json!({
+                "sessionId": target_layer_id,
+                "path": "src/missing.rs",
+            })),
+            Err(ApiError::NotFound(value)) if value.contains("src/missing.rs")
+        ));
+        assert!(matches!(
+            call(serde_json::json!({
+                "sessionId": target_layer_id,
+                "against": "target",
+                "targetBranch": "feature/not-actually-compared",
+            })),
+            Err(ApiError::BadRequest(message)) if message.contains("not implemented")
+        ));
+        assert!(matches!(
+            call(serde_json::json!({
+                "sessionId": target_layer_id,
+                "targetBranch": "feature/irrelevant",
+            })),
+            Err(ApiError::BadRequest(message)) if message.contains("targetBranch")
+        ));
+        assert_eq!(layers.snapshot(), before, "read must not mutate GhostDiff");
+
+        let catalog = scoped_tools_list_value(&state, "diff-reader");
+        let tool = catalog["tools"]
+            .as_array()
+            .expect("tool catalog")
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.agent_diff")
+            .expect("agent diff is principal-visible");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["outputSensitivity"], "conditional-sensitive-source");
+        assert_eq!(tool["readOnly"], true);
     }
 
     #[test]

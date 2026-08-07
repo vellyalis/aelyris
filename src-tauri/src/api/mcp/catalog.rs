@@ -223,8 +223,11 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "aelyris.agent_diff",
-                "description": "Read an agent-owned GhostDiff layer without mutating files.",
+                "description": "Read one exact agent-owned GhostDiff layer without mutating files. Summary reads exclude absolute source paths, branch/tint payloads, terminal grids, and unrelated layers. Supplying an exact repo-relative path returns the existing raw FileDelta and explicitly marks the potentially sensitive source boundary. Target-branch comparison is not implemented by this tool and fails closed.",
                 "safety": "FREE",
+                "accessMode": "observe-only",
+                "outputSensitivity": "conditional-sensitive-source",
+                "readOnly": true,
                 "inputSchema": {
                     "type": "object",
                     "required": ["sessionId"],

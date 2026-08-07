@@ -4206,39 +4206,24 @@ pub(super) async fn dispatch_authorized(
             let against =
                 arg_optional_string(&args, "against").unwrap_or_else(|| "base".to_string());
             if against == "target" {
-                let target_branch = arg_string(&args, "targetBranch")?;
-                crate::control::worktree::validate_branch(&target_branch)
-                    .map_err(ApiError::BadRequest)?;
-            } else if against != "base" {
+                return Err(ApiError::BadRequest(
+                    "GhostDiff target comparison is not implemented by the existing layer owner"
+                        .to_string(),
+                ));
+            }
+            if against != "base" {
                 return Err(ApiError::BadRequest(
                     "MCP argument `against` must be `base` or `target`".to_string(),
                 ));
             }
-
-            let Some(layers) = state.ghost_layers.as_ref() else {
-                return Ok(Json(serde_json::json!({
-                    "schema": "aelyris.mcp.server.v1",
-                    "tool": name,
-                    "ok": true,
-                    "result": {
-                        "available": false,
-                        "reason": "ghostdiff registry is not attached to this process"
-                    },
-                })));
-            };
+            if arg_optional_string(&args, "targetBranch").is_some() {
+                return Err(ApiError::BadRequest(
+                    "MCP argument `targetBranch` is unsupported without a real target comparison"
+                        .to_string(),
+                ));
+            }
             let path = arg_optional_string(&args, "path");
-            let file = path
-                .as_ref()
-                .and_then(|path| crate::control::diff::get_file(layers, &session_id, path));
-            serde_json::json!({
-                "available": true,
-                "source": "ghostdiff-layer-registry",
-                "sessionId": session_id,
-                "against": against,
-                "path": path,
-                "snapshot": crate::control::diff::list_layers(layers),
-                "file": file,
-            })
+            super::agent_diff_read::get(&state, &session_id, path.as_deref())?
         }
         "aelyris.session.summarize" => {
             let actor = super::session_lifecycle::authenticated_actor(actor)?;
