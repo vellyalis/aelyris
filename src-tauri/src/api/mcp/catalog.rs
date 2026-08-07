@@ -81,12 +81,18 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "mux.workspaces.list",
-                "description": "List Rust mux workspaces and pane counts.",
+                "description": "List deterministic Rust mux workspace identities and aggregate pane counts without paths, titles, process identities, client records, or agent/project payloads.",
+                "accessMode": "observe-only",
+                "outputSensitivity": "value-minimized-coordination",
+                "readOnly": true,
                 "inputSchema": { "type": "object", "additionalProperties": false }
             },
             {
                 "name": "mux.workspace.get",
-                "description": "Return the Rust-owned mux graph for one workspace.",
+                "description": "Return deterministic exact Rust mux topology for one workspace while excluding paths, titles, OS process identities, client records, and agent/project payloads. Exact terminal binding remains for separately authorized operations.",
+                "accessMode": "observe-only",
+                "outputSensitivity": "value-minimized-coordination",
+                "readOnly": true,
                 "inputSchema": {
                     "type": "object",
                     "required": ["workspaceId"],

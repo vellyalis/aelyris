@@ -3,7 +3,7 @@ use serde::Serialize;
 #[cfg(not(test))]
 use tauri::{Emitter, Manager};
 
-use super::super::mux::{send_workspace_input, workspace_summary};
+use super::super::mux::send_workspace_input;
 use super::super::{
     ApiError, ApiResult, ApiState, McpPendingDecision, MAX_MCP_PENDING, WS_MAX_INPUT_FRAME_BYTES,
 };
@@ -3969,30 +3969,10 @@ pub(super) async fn dispatch_authorized(
                 "readOnly": true,
             })
         }
-        "mux.workspaces.list" => {
-            let mux = state
-                .mux
-                .lock()
-                .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
-            let mut workspaces = mux
-                .workspace_ids()
-                .into_iter()
-                .filter_map(|id| mux.graph(&id).map(workspace_summary))
-                .collect::<Vec<_>>();
-            workspaces.sort_by(|a, b| a.id.cmp(&b.id));
-            serde_json::json!({ "workspaces": workspaces })
-        }
+        "mux.workspaces.list" => super::mux_topology::list(&state)?,
         "mux.workspace.get" => {
             let workspace_id = arg_string(&args, "workspaceId")?;
-            let mux = state
-                .mux
-                .lock()
-                .map_err(|_| ApiError::Internal("mux manager lock poisoned".to_string()))?;
-            let graph = mux
-                .graph(&workspace_id)
-                .cloned()
-                .ok_or_else(|| ApiError::NotFound(workspace_id.clone()))?;
-            serde_json::json!({ "workspaceId": workspace_id, "graph": graph })
+            super::mux_topology::get(&state, &workspace_id)?
         }
         "mux.workspace.safeInput" => {
             let workspace_id = arg_string(&args, "workspaceId")?;

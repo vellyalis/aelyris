@@ -10,6 +10,7 @@ mod cost_caps;
 mod dispatch;
 mod event_ack;
 mod fleet_status;
+mod mux_topology;
 mod orchestrator_step;
 mod pending_decisions;
 mod proofbook_compat_mutations;
@@ -535,6 +536,231 @@ mod tests {
         assert_eq!(tool["accessMode"], "observe-only");
         assert_eq!(tool["outputSensitivity"], "value-minimized-coordination");
         assert_eq!(tool["readOnly"], true);
+    }
+
+    #[test]
+    fn mcp_mux_topology_is_value_minimized_deterministic_and_read_only() {
+        use crate::mux::graph::{
+            graph_from_single_pane, AgentContext, LifecycleState, MuxClientMode, MuxClientRecord,
+            PaneRecord, ProjectContext, PtyBinding,
+        };
+        use crate::mux::layout::SplitAxis;
+        use crate::pty::PtyManager;
+
+        let secret_workspace_name = "AIO41_SECRET_WORKSPACE_NAME";
+        let secret_window_title = "AIO41_SECRET_WINDOW_TITLE";
+        let secret_tab_title = "AIO41_SECRET_TAB_TITLE";
+        let secret_pane_title = "AIO41_SECRET_PANE_TITLE";
+        let secret_shell = "AIO41_SECRET_SHELL_COMMAND";
+        let secret_cwd = "C:/AIO41/SECRET_CWD";
+        let secret_project_path = "C:/AIO41/SECRET_PROJECT";
+        let secret_worktree_path = "C:/AIO41/SECRET_WORKTREE";
+        let secret_branch = "AIO41_SECRET_BRANCH";
+        let secret_task = "AIO41_SECRET_TASK";
+        let secret_workflow = "AIO41_SECRET_WORKFLOW";
+        let secret_agent = "AIO41_SECRET_AGENT";
+        let secret_provider = "AIO41_SECRET_PROVIDER";
+        let secret_permission = "AIO41_SECRET_PERMISSION";
+        let secret_client = "AIO41_SECRET_CLIENT";
+        let secret_dead_reason = "AIO41_SECRET_DEAD_REASON";
+
+        let mut graph_b = graph_from_single_pane(
+            "workspace-b",
+            secret_workspace_name,
+            "window-b",
+            "tab-b",
+            PaneRecord::new("pane-b", secret_pane_title, secret_shell, secret_cwd),
+        );
+        {
+            let workspace = graph_b
+                .workspaces
+                .get_mut("workspace-b")
+                .expect("workspace-b");
+            workspace.project_path = Some(secret_project_path.to_string());
+            workspace.clients.insert(
+                secret_client.to_string(),
+                MuxClientRecord::new(
+                    secret_client,
+                    "workspace-b",
+                    "window-b",
+                    MuxClientMode::ReadWrite,
+                    123_456,
+                ),
+            );
+            let window = workspace.windows.get_mut("window-b").expect("window-b");
+            window.title = secret_window_title.to_string();
+            let tab = window.tabs.get_mut("tab-b").expect("tab-b");
+            tab.title = secret_tab_title.to_string();
+            tab.synchronized_panes = true;
+            let pane_b = tab.panes.get_mut("pane-b").expect("pane-b");
+            pane_b.role = Some("implementer".to_string());
+            pane_b.lifecycle = LifecycleState::Active;
+            pane_b.pty = Some(PtyBinding {
+                terminal_id: "terminal-b".to_string(),
+                process_id: Some(92_002),
+                cols: 120,
+                rows: 40,
+            });
+            pane_b.project = Some(ProjectContext {
+                project_path: secret_project_path.to_string(),
+                branch: Some(secret_branch.to_string()),
+                worktree_path: Some(secret_worktree_path.to_string()),
+                task_id: Some(secret_task.to_string()),
+                workflow_id: Some(secret_workflow.to_string()),
+            });
+            pane_b.agent = Some(AgentContext {
+                agent_id: secret_agent.to_string(),
+                provider: secret_provider.to_string(),
+                role: Some("builder".to_string()),
+                permission_profile: Some(secret_permission.to_string()),
+            });
+
+            let mut pane_a = PaneRecord::new(
+                "pane-a",
+                "AIO41_SECRET_PANE_TITLE_A",
+                "AIO41_SECRET_SHELL_A",
+                "C:/AIO41/SECRET_CWD_A",
+            );
+            pane_a.role = Some("reviewer".to_string());
+            pane_a.lifecycle = LifecycleState::Dead {
+                reason: secret_dead_reason.to_string(),
+            };
+            pane_a.pty = Some(PtyBinding {
+                terminal_id: "terminal-a".to_string(),
+                process_id: Some(92_001),
+                cols: 100,
+                rows: 30,
+            });
+            pane_a.project = pane_b.project.clone();
+            pane_a.agent = pane_b.agent.clone();
+            tab.split_pane("pane-b", pane_a, SplitAxis::Horizontal)
+                .expect("split pane");
+        }
+        graph_b.validate().expect("graph-b valid");
+
+        let graph_a = graph_from_single_pane(
+            "workspace-a",
+            "workspace-a-name",
+            "window-a",
+            "tab-a",
+            PaneRecord::new("pane-z", "pane-z", "powershell", "C:/safe-test"),
+        );
+        graph_a.validate().expect("graph-a valid");
+
+        let listed_projection = mux_topology::project_list(vec![&graph_b, &graph_a]);
+        assert_eq!(listed_projection["source"], "rust-mux-manager");
+        assert_eq!(listed_projection["workspaceCount"], 2);
+        assert_eq!(listed_projection["workspaces"][0]["id"], "workspace-a");
+        assert_eq!(listed_projection["workspaces"][1]["id"], "workspace-b");
+        assert_eq!(listed_projection["readOnly"], true);
+
+        let graph_projection = mux_topology::project_graph(&graph_b);
+        assert_eq!(graph_projection["workspaceId"], "workspace-b");
+        assert_eq!(graph_projection["source"], "rust-mux-manager");
+        assert_eq!(graph_projection["exactTopologyReturned"], true);
+        assert_eq!(graph_projection["filesystemPathsExposed"], false);
+        assert_eq!(graph_projection["titlesExposed"], false);
+        assert_eq!(graph_projection["processIdentityExposed"], false);
+        assert_eq!(graph_projection["clientRecordsExposed"], false);
+        assert_eq!(graph_projection["projectMetadataExposed"], false);
+        assert_eq!(graph_projection["agentMetadataExposed"], false);
+        assert_eq!(graph_projection["readOnly"], true);
+        let tab = &graph_projection["graph"]["workspaces"]["workspace-b"]["windows"]["window-b"]
+            ["tabs"]["tab-b"];
+        assert_eq!(tab["synchronizedPanes"], true);
+        assert_eq!(tab["panes"]["pane-a"]["role"], "reviewer");
+        assert_eq!(tab["panes"]["pane-a"]["lifecycle"]["state"], "dead");
+        assert_eq!(tab["panes"]["pane-a"]["pty"]["terminalId"], "terminal-a");
+        assert_eq!(tab["panes"]["pane-a"]["pty"]["cols"], 100);
+        assert_eq!(tab["panes"]["pane-a"]["pty"]["rows"], 30);
+        assert!(tab["panes"]["pane-a"]["pty"].get("processId").is_none());
+        assert!(tab["layout"]["root"].is_object());
+
+        let serialized = serde_json::to_string(&graph_projection).expect("serialize topology");
+        for forbidden in [
+            secret_workspace_name,
+            secret_window_title,
+            secret_tab_title,
+            secret_pane_title,
+            secret_shell,
+            secret_cwd,
+            secret_project_path,
+            secret_worktree_path,
+            secret_branch,
+            secret_task,
+            secret_workflow,
+            secret_agent,
+            secret_provider,
+            secret_permission,
+            secret_client,
+            secret_dead_reason,
+            "\"title\"",
+            "\"shell\"",
+            "\"cwd\"",
+            "\"processId\"",
+            "\"projectPath\"",
+            "\"worktreePath\"",
+            "\"taskId\"",
+            "\"workflowId\"",
+            "\"agentId\"",
+            "\"provider\"",
+            "\"permissionProfile\"",
+            "\"clients\"",
+            "\"lastSeenAtMs\"",
+            "\"reason\"",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "mux topology exposed {forbidden}"
+            );
+        }
+
+        let state = ApiState::new(PtyManager::new(), crate::api::AuthConfig::disabled());
+        {
+            let mut mux = state.mux.lock().expect("mux lock");
+            mux.insert_graph(graph_b).expect("insert graph-b");
+            mux.insert_graph(graph_a).expect("insert graph-a");
+        }
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let call = |name: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "mux-reader",
+                ToolCallBody {
+                    name: name.to_string(),
+                    arguments,
+                },
+            ))
+        };
+        let Json(listed) =
+            call("mux.workspaces.list", serde_json::json!({})).expect("list mux workspaces");
+        assert_eq!(listed["result"]["workspaces"][0]["id"], "workspace-a");
+        let Json(got) = call(
+            "mux.workspace.get",
+            serde_json::json!({ "workspaceId": "workspace-b" }),
+        )
+        .expect("get mux topology");
+        assert_eq!(got["result"]["exactTopologyReturned"], true);
+        assert!(matches!(
+            call(
+                "mux.workspace.get",
+                serde_json::json!({ "workspaceId": "missing-workspace" }),
+            ),
+            Err(ApiError::NotFound(value)) if value == "missing-workspace"
+        ));
+
+        let catalog = scoped_tools_list_value(&state, "mux-reader");
+        for name in ["mux.workspaces.list", "mux.workspace.get"] {
+            let tool = catalog["tools"]
+                .as_array()
+                .expect("tool catalog")
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .expect("mux tool is principal-visible");
+            assert_eq!(tool["accessMode"], "observe-only");
+            assert_eq!(tool["outputSensitivity"], "value-minimized-coordination");
+            assert_eq!(tool["readOnly"], true);
+        }
     }
 
     #[test]

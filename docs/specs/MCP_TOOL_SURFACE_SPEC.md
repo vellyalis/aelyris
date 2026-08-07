@@ -135,6 +135,15 @@ Machine-local cwd values, OS process ids, and PTY spawn-generation tokens are ex
 from the MCP projection. The result states its Rust PTY source and read-only boundary;
 it creates no registry, cache, terminal owner, or alternate liveness model.
 
+`mux.workspaces.list` and `mux.workspace.get` apply the same projection discipline to
+the existing Rust `MuxManager`. The list returns exact workspace identity plus bounded
+window/tab/pane counts. The graph read retains exact workspace/window/tab/pane ids,
+active selections, layout, synchronized-pane state, lifecycle/role, and terminal
+binding dimensions. Workspace/project/worktree/cwd paths, titles, shell labels, OS
+process ids, client records, task/workflow data, and agent/provider/permission payloads
+are excluded. Unknown workspaces remain typed failures, and neither read mutates or
+persists mux/PTY state.
+
 `mux.workspace.safeInput` and REST `/mux/workspaces/{id}/input` both pass the
 authenticated Principal into the one `TerminalInputAuthority` envelope. Neither
 surface accepts an actor field; command-risk, approval, target-scope, quarantine,

@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-41`.
-LAST COMPLETED SLICE: `AIO-40`.
-NEXT IMPLEMENTATION SLICE: `AIO-41`.
+ACTIVE SLICE: `AIO-42`.
+LAST COMPLETED SLICE: `AIO-41`.
+NEXT IMPLEMENTATION SLICE: `AIO-42`.
 
 ```yaml
 continuation_contract:
@@ -98,7 +98,8 @@ Current portfolio classification:
 | MCP path-minimized worktree mutation results | **COMPLETE** | Create reuses the safe inventory projection and remove returns exact worktree identity/deletion intent plus repository digest, without repository or absolute worktree paths |
 | MCP principal-bound terminal capture evidence | **COMPLETE** | Bounded raw scrollback remains unredacted by design, while discovery/results state the sensitive read-only boundary and accepted/rejected reads retain Principal-bound value-free evidence |
 | MCP value-minimized terminal inventory | **COMPLETE** | `terminal.list` now returns deterministic exact terminal identity, optional short identity, shell type, and uptime without cwd, OS process identity, or PTY generation tokens |
-| MCP value-minimized mux topology | **NOW** | `mux.workspace.get` still serializes the full Rust graph, including paths, titles, client records, process ids, and agent/project metadata that are unnecessary for pane coordination |
+| MCP value-minimized mux topology | **COMPLETE** | Mux discovery now retains exact identities, active selections, layout, pane lifecycle/role, and terminal binding while excluding paths, titles, process/client records, and agent/project payloads |
+| MCP scoped GhostDiff inspection | **NOW** | `aelyris.agent_diff` returns every layer summary, reflects raw path/session values, and accepts `against=target` even though the existing GhostDiff owner does not apply that comparison |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -1744,7 +1745,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` authenticated deterministic mux coordination
 without serializing machine-local paths, process identity, client records, or agent and
 project payloads.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `mux.workspaces.list` and `mux.workspace.get` over the existing Rust `MuxManager`,
   graph validation, Governance, and principal-scoped discovery. Do not add a second mux
@@ -1762,6 +1763,32 @@ Status: **ACTIVE**.
 - Done: an authenticated AI can understand the exact live pane topology and target a
   separately authorized operation without receiving host paths or unrelated runtime
   and agent metadata.
+
+### AIO-42 — MCP Scoped GhostDiff Inspection
+
+Capability target: `Product-Accessible` authenticated exact-layer GhostDiff inspection
+with an explicit raw-source boundary and no fabricated comparison mode.
+Status: **ACTIVE**.
+
+- Keep `aelyris.agent_diff` over the existing `LayerRegistry`, `control::diff::get_file`,
+  Governance, and principal-scoped discovery. Do not add a diff engine, layer store,
+  source mirror, redaction engine, cache, branch comparator, or alternate file reader.
+- Resolve exactly the requested layer/session id. Return a bounded safe summary for
+  that layer only; do not serialize every unrelated layer or absolute source paths,
+  repository paths, worktree paths, branch metadata, tint payloads, or terminal grids.
+- When an exact repo-relative file path is requested, preserve the existing raw
+  `FileDelta` because source inspection is the declared purpose, but explicitly return
+  `rawSourceReturned:true`, `sensitiveOutputPossible:true`, and `readOnly:true`.
+  Summary-only reads return `rawSourceReturned:false`.
+- Keep exact repo-relative file paths needed to select a file, but mark that boundary
+  machine-readably and never treat them as host filesystem paths.
+- Reject unsupported `against=target` rather than validating `targetBranch` and then
+  silently returning the base-owned GhostDiff. Missing layer and missing requested file
+  remain typed failures, not empty successful reads.
+- Reading the layer must not refresh, recompute, register, complete, remove, apply,
+  write, checkout, compare branches, or mutate any file or GhostDiff owner.
+- Done: an authenticated AI can inspect one exact agent-owned diff without receiving
+  unrelated layer metadata or mistaking an unapplied target comparison for real output.
 
 ## Deferred After GMV
 
@@ -1805,9 +1832,9 @@ deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
 pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
 also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
-value-minimized terminal inventory `AIO-40` are also complete. MCP value-minimized
-mux topology `AIO-41` is active while the `GMV-3` live-provider claim confirmation
-remains externally blocked;
+value-minimized terminal inventory `AIO-40` and MCP value-minimized mux topology
+`AIO-41` are also complete. MCP scoped GhostDiff inspection `AIO-42` is active while
+the `GMV-3` live-provider claim confirmation remains externally blocked;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
