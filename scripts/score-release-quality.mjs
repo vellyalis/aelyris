@@ -456,10 +456,10 @@ const tauriLibSource = readFileSync(join(ROOT, "src-tauri", "src", "lib.rs"), "u
 const apiSource = readFileSync(join(ROOT, "src-tauri", "src", "api", "mod.rs"), "utf8");
 const aelysSource = readFileSync(join(ROOT, "src-tauri", "src", "bin", "aelys.rs"), "utf8");
 const nativeProofSourcePaths = [
-  join(ROOT, "src-tauri", "src", "bin", "aelyris_native.rs"),
-  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "client.rs"),
-  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "readiness.rs"),
-  join(ROOT, "src-tauri", "src", "bin", "aelyris_native", "router.rs"),
+  join(ROOT, "src-tauri", "src", "aelyris_native.rs"),
+  join(ROOT, "src-tauri", "src", "aelyris_native", "client.rs"),
+  join(ROOT, "src-tauri", "src", "aelyris_native", "readiness.rs"),
+  join(ROOT, "src-tauri", "src", "aelyris_native", "router.rs"),
 ];
 const aelyrisNativeSource = nativeProofSourcePaths.map((path) => readFileSync(path, "utf8")).join("\n");
 const nativeProofSourceMtime = Math.max(...nativeProofSourcePaths.map(mtimeMs));

@@ -195,7 +195,7 @@ crash 冪等（rev2 で merge_intent 方式に統一）:
 - `session_checkpoints`（repo パターン `persistence/mod.rs`）: `logical_session_id`,`checkpoint_seq`,`pty_id`,`cli`,`model`,`cwd`,`worktree_*`,`status`,`cost`,`tokens_used`,`context_pct`,`summary_json`(redacted),`inflight_ref`,`predecessor_session_id`(lineage SoR),`created_at`。UNIQUE(`logical_session_id`,`checkpoint_seq`)。
 - `session_handoffs`（§7 state 機械）: 基本 identity/state に加え、`predecessor_pty_id`,`successor_pty_id`,`successor_checkpoint_seq`,`baton_version`,`acceptance_json`,`acceptance_digest`,`outcome`(pending|accepted|retryable_failure|terminal_failure),`cleanup_status`(not_required|pending|stopped|quarantined) を保持する。UNIQUE(`predecessor_id`,`handoff_seq`)。v5→v6 migration は legacy ACK を acceptance に推測変換せず、legacy `failed` は acceptance null の `terminal_failure` / cleanup pending として一方向に正規化し、accepted/failed/identity 列を immutable または単方向遷移にする。
 - idempotency UNIQUE＋append-only/immutability トリガは `merge_intents`（`src-tauri/src/db/migrations.rs`）を範に。
-- per-session context proxy/handoffReady は **既存 `agent_identity_records.context_usage_json`（`db/queries.rs`）を live runtime telemetry で書く**（現状は静的 proof のみ `bin/aelyris_native.rs`）。新 checkpoint 表と二重管理しない（rev2）。
+- per-session context proxy/handoffReady は **既存 `agent_identity_records.context_usage_json`（`db/queries.rs`）を live runtime telemetry で書く**（現状は静的 proof のみ `aelyris_native.rs`）。新 checkpoint 表と二重管理しない（rev2）。
 
 ### 8.2 安定 session id ＋ last_activity
 `InteractiveSessionInfo` に `logical_session_id`（pty_id と独立）と `last_activity` を追加。`session_id==pty_id` の現状ではリサイクルで identity が切れる（段階移行・§14）。
