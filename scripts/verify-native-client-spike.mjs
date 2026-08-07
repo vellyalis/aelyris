@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
@@ -20,11 +21,25 @@ const out =
   process.env.AELYRIS_NATIVE_CLIENT_OUT ??
   join(root, ".codex-auto", "quality", "native-client-spike.json");
 const token = process.env.AELYRIS_NATIVE_CLIENT_TOKEN ?? "native-client-spike-token";
+const inputAuthorityToken =
+  process.env.AELYRIS_NATIVE_CLIENT_INPUT_AUTHORITY_TOKEN ?? `native-client-spike-input-${randomUUID()}`;
 const cargoManifest = join(root, "src-tauri", "Cargo.toml");
 const nativeBin = join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`);
+const startupAuthorities = [
+  "task_graph",
+  "execution_attempts",
+  "pane_pty_generations",
+  "ownership",
+  "worktrees_merge_intents",
+  "leases",
+  "event_bus",
+];
 
 if (!existsSync(sidecar)) {
   throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
+}
+if (inputAuthorityToken === token) {
+  throw new Error("native client spike public and input-authority tokens must differ");
 }
 
 async function freePort() {
@@ -74,14 +89,55 @@ async function waitForReady(base) {
   throw new Error(`sidecar did not become ready: ${lastError?.message ?? "unknown"}`);
 }
 
-function startSidecar(port, muxDir, scrollbackDir) {
+async function admitIsolatedSidecar(base) {
+  const epoch = randomUUID();
+  const authorityHeaders = { "x-aelyris-input-authority": inputAuthorityToken };
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers: authorityHeaders,
+    body: JSON.stringify({ action: "begin", epoch }),
+  });
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers: authorityHeaders,
+    body: JSON.stringify({
+      action: "publish",
+      epoch,
+      report: {
+        phase: "ready",
+        databaseReady: true,
+        sidecarConnected: true,
+        terminalReconciliationComplete: true,
+        adoptedTerminals: 0,
+        restoredSessions: 0,
+        reconciledHandoffs: 0,
+        authorities: startupAuthorities.map((authority) => ({
+          authority,
+          status: "reconciled",
+          observed: 0,
+          reconciled: 0,
+          quarantined: 0,
+          details: [],
+        })),
+        quarantinedTotal: 0,
+        completedAtMs: Date.now(),
+        failureStage: null,
+        failureReason: null,
+      },
+    }),
+  });
+}
+
+function startSidecar(port, muxDir, scrollbackDir, dbPath) {
   if (process.platform === "win32" && process.env.AELYRIS_NATIVE_CLIENT_USE_POWERSHELL_START === "1") {
     const quote = (value) => `'${String(value).replaceAll("'", "''")}'`;
     const command = [
       `$env:AELYRIS_API_TOKEN=${quote(token)};`,
+      `$env:AELYRIS_INPUT_AUTHORITY_TOKEN=${quote(inputAuthorityToken)};`,
       `$env:AELYRIS_PTY_SERVER_PORT=${quote(port)};`,
       `$env:AELYRIS_MUX_SNAPSHOT_DIR=${quote(muxDir)};`,
       `$env:AELYRIS_PTY_SCROLLBACK_DIR=${quote(scrollbackDir)};`,
+      `$env:AELYRIS_DB_PATH=${quote(dbPath)};`,
       `$p=Start-Process -FilePath ${quote(sidecar)} -PassThru -WindowStyle Hidden;`,
       "Write-Output $p.Id",
     ].join(" ");
@@ -130,9 +186,11 @@ function startSidecar(port, muxDir, scrollbackDir) {
       env: {
         ...process.env,
         AELYRIS_API_TOKEN: token,
+        AELYRIS_INPUT_AUTHORITY_TOKEN: inputAuthorityToken,
         AELYRIS_PTY_SERVER_PORT: String(port),
         AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
         AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
+        AELYRIS_DB_PATH: dbPath,
       },
       shell: false,
       stdio: "ignore",
@@ -396,6 +454,7 @@ async function main() {
   const tempRoot = join(root, ".codex-auto", "quality", `native-client-spike-${Date.now()}`);
   const muxDir = join(tempRoot, "mux");
   const scrollbackDir = join(tempRoot, "scrollback");
+  const dbPath = join(tempRoot, "aelyris.db");
   mkdirSync(muxDir, { recursive: true });
   mkdirSync(scrollbackDir, { recursive: true });
 
@@ -436,10 +495,12 @@ async function main() {
   let daemon = null;
 
   try {
-    daemon = startSidecar(port, muxDir, scrollbackDir);
+    daemon = startSidecar(port, muxDir, scrollbackDir, dbPath);
     const directContract = await waitForReady(base);
     report.directContract = directContract;
     report.checks.push("daemon-ready");
+    await admitIsolatedSidecar(base);
+    report.checks.push("startup-admission-published");
     buildNativeBinary();
     report.checks.push("native-binary-built");
 

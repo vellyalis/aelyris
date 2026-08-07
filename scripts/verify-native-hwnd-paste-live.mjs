@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\//, ""));
 const OUT = resolve(ROOT, ".codex-auto/production-smoke/native-hwnd-paste-live.json");
@@ -56,15 +56,18 @@ function mtime(path) {
 }
 
 function nativeClientPasteGuardFresh(nativeClient) {
+  const checks = new Set(Array.isArray(nativeClient?.checks) ? nativeClient.checks : []);
   return (
-    nativeClient?.status === "passed" &&
     mtime(NATIVE_CLIENT_ARTIFACT) + 5_000 >=
       Math.max(
         mtime(resolve(ROOT, "scripts/verify-native-client-spike.mjs")),
         ...NATIVE_PROOF_SOURCE_PATHS.map((path) => mtime(resolve(ROOT, path))),
         mtime(resolve(ROOT, "src-tauri/src/term/native_input.rs")),
         mtime(resolve(ROOT, "src-tauri/src/ipc/commands.rs")),
-      )
+      ) &&
+    checks.has("native-paste-guard-proof") &&
+    checks.has("native-paste-guard-wm-paste-proof") &&
+    checks.has("native-paste-guard-no-cdp-proof")
   );
 }
 

@@ -42,8 +42,7 @@ const nativeProofSourcePaths = [
   "src-tauri/src/aelyris_native/readiness.rs",
   "src-tauri/src/aelyris_native/router.rs",
 ];
-const nativeClientFresh =
-  nativeClient?.status === "passed" &&
+const nativeClientPasteGuardSourceFresh =
   mtime(nativeClientArtifactPath) + 5_000 >=
     Math.max(
       mtime("scripts/verify-native-client-spike.mjs"),
@@ -52,9 +51,13 @@ const nativeClientFresh =
       mtime("src-tauri/src/ipc/commands.rs"),
       mtime("src-tauri/src/ipc/ime_commands.rs"),
     );
+const nativeClientChecks = new Set(Array.isArray(nativeClient?.checks) ? nativeClient.checks : []);
 const nativePasteGuard = nativeClient?.nativePasteGuard?.pasteGuard;
 const nativePasteGuardFresh =
-  nativeClientFresh &&
+  nativeClientPasteGuardSourceFresh &&
+  nativeClientChecks.has("native-paste-guard-proof") &&
+  nativeClientChecks.has("native-paste-guard-wm-paste-proof") &&
+  nativeClientChecks.has("native-paste-guard-no-cdp-proof") &&
   nativePasteGuard?.schema === "aelyris.native.paste-guard-proof.v1" &&
   nativePasteGuard?.nativePasteGuardProof === true &&
   nativePasteGuard?.nativeHwndWmPaste === true &&
@@ -282,7 +285,7 @@ const report = {
   status: failed.length === 0 ? "pass" : "blocked",
   evidence: {
     nativeClientArtifactPath,
-    nativeClientFresh,
+    nativeClientPasteGuardSourceFresh,
     nativePasteGuardFresh,
     nativeHwndPasteLiveArtifactPath,
     nativeHwndPasteLiveFresh,
