@@ -6,7 +6,13 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmInvocation =
+  process.platform === "win32"
+    ? {
+        command: process.env.ComSpec ?? "cmd.exe",
+        prefixArgs: ["/d", "/s", "/c", "corepack", "pnpm"],
+      }
+    : { command: "pnpm", prefixArgs: [] };
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const outDir = path.join(repoRoot, ".codex-auto", "release-doctor");
 const outJson = path.join(outDir, "supply-chain-audit.json");
@@ -55,6 +61,10 @@ async function run(command, args) {
       stderr: error.stderr ?? error.message ?? String(error),
     };
   }
+}
+
+async function runPnpm(args) {
+  return run(pnpmInvocation.command, [...pnpmInvocation.prefixArgs, ...args]);
 }
 
 function parseJson(text) {
@@ -437,7 +447,7 @@ function classifyCargoWarningReachability(warnings, metadata, rustSourceCorpus =
 
 async function main() {
   const generatedAt = new Date().toISOString();
-  const npmAudit = await run(pnpm, ["audit", "--audit-level", "moderate", "--json"]);
+  const npmAudit = await runPnpm(["audit", "--audit-level", "moderate", "--json"]);
   const cargoMetadata = await run(cargo, [
     "metadata",
     "--manifest-path",

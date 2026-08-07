@@ -8,7 +8,13 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const pnpmInvocation =
+  process.platform === "win32"
+    ? {
+        command: process.env.ComSpec ?? "cmd.exe",
+        prefixArgs: ["/d", "/s", "/c", "corepack", "pnpm"],
+      }
+    : { command: "pnpm", prefixArgs: [] };
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 const outPath = path.join(repoRoot, ".codex-auto", "quality", "stack-risk.json");
 const windowsTarget = "x86_64-pc-windows-msvc";
@@ -58,6 +64,10 @@ async function run(command, args) {
       stderr: error.stderr ?? error.message ?? String(error),
     };
   }
+}
+
+async function runPnpm(args) {
+  return run(pnpmInvocation.command, [...pnpmInvocation.prefixArgs, ...args]);
 }
 
 function commandLabel(command, args) {
@@ -862,7 +872,7 @@ async function collectCargoScope(scope) {
 
 async function main() {
   const generatedAt = new Date().toISOString();
-  const npmResult = await run(pnpm, ["audit", "--json"]);
+  const npmResult = await runPnpm(["audit", "--json"]);
   const npmJson = parseJson(npmResult.stdout);
   const npmKnownVulnerabilities = npmVulnerabilityCount(npmJson);
   const [cargoResults, tauriUrlpatternUpstreamEvidence] = await Promise.all([
