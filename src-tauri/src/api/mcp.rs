@@ -135,6 +135,14 @@ pub(super) async fn tools_call_as_actor(
     if let crate::governance::AccessDecision::Deny(reason) =
         state.governance.authorize(actor, &body.name)
     {
+        if body.name == "terminal.capture" {
+            dispatch::audit_terminal_capture_predispatch_rejection(
+                state,
+                actor,
+                &arguments,
+                "governance_denied",
+            );
+        }
         super::audit_access_denied(&state, actor, &body.name, &reason);
         return Err(ApiError::Forbidden(format!(
             "verb `{}` is not permitted",
@@ -143,6 +151,14 @@ pub(super) async fn tools_call_as_actor(
     }
     if let Some(schema) = input_schema_for_tool(&body.name) {
         if let Err(report) = validate_tool_arguments(&body.name, &arguments, &schema) {
+            if body.name == "terminal.capture" {
+                dispatch::audit_terminal_capture_predispatch_rejection(
+                    state,
+                    actor,
+                    &arguments,
+                    "schema_violation",
+                );
+            }
             return Ok(schema_tool_error(&body.name, report.to_payload(&body.name)));
         }
     }
@@ -443,6 +459,288 @@ mod tests {
             mcp_instructions_for_actor(&state, crate::governance::DEFAULT_ACTOR),
             MCP_INSTRUCTIONS
         );
+    }
+
+    #[test]
+    fn mcp_terminal_capture_is_principal_bound_and_sensitive_boundary_explicit() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::governance::{AccessControl, AccessDecision, Governance};
+        use crate::pty::{FilePtyScrollbackStore, PtyManager};
+
+        struct DenyBlockedCapture;
+        impl AccessControl for DenyBlockedCapture {
+            fn authorize(&self, actor: &str, verb: &str) -> AccessDecision {
+                if actor == "blocked-reader" && verb == "terminal.capture" {
+                    AccessDecision::Deny("capture denied".to_string())
+                } else {
+                    AccessDecision::Allow
+                }
+            }
+        }
+
+        let scrollback = tempfile::tempdir().expect("scrollback dir");
+        let terminal_id = "AIO39_TERMINAL_ID_MUST_NOT_BE_LOGGED";
+        let stale_terminal_id = "AIO39_STALE_TERMINAL_ID_MUST_NOT_BE_LOGGED";
+        let pty_failure_id = "AIO39_PTY_FAILURE_ID_MUST_NOT_BE_LOGGED";
+        let raw_output = "\x1b[31mAIO39_SECRET_OUTPUT_MUST_NOT_BE_LOGGED\x1b[0m\nsecond raw line";
+        FilePtyScrollbackStore::new(scrollback.path())
+            .append(terminal_id, raw_output)
+            .expect("seed durable scrollback");
+        std::fs::create_dir(scrollback.path().join(format!("{pty_failure_id}.log")))
+            .expect("seed unreadable scrollback target");
+        let pty = PtyManager::new().with_scrollback_dir(scrollback.path());
+        let db = Arc::new(ManagedDb::new(Database::open_memory().expect("memory db")));
+        let state = ApiState::new(pty.clone(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()));
+
+        let listed = scoped_tools_list_value(&state, "capture-reader");
+        let tool = listed["tools"]
+            .as_array()
+            .expect("tool catalog")
+            .iter()
+            .find(|tool| tool["name"] == "terminal.capture")
+            .expect("capture tool is principal-visible");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["outputSensitivity"], "sensitive-raw-output");
+        assert_eq!(tool["rawScrollbackReturned"], true);
+        assert_eq!(tool["sensitiveOutputPossible"], true);
+        assert_eq!(tool["readOnly"], true);
+
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let call = |state: &ApiState, actor: &str, arguments: serde_json::Value| {
+            rt.block_on(tools_call_as_actor(
+                state,
+                actor,
+                ToolCallBody {
+                    name: "terminal.capture".to_string(),
+                    arguments,
+                },
+            ))
+        };
+
+        let Json(captured) = call(
+            &state,
+            "capture-reader",
+            serde_json::json!({
+                "sessionId": terminal_id,
+                "lines": 2,
+                "clean": false,
+            }),
+        )
+        .expect("capture succeeds");
+        assert_eq!(captured["result"]["sessionId"], terminal_id);
+        assert_eq!(captured["result"]["text"], raw_output);
+        assert_eq!(captured["result"]["lines"], 2);
+        assert_eq!(captured["result"]["clean"], false);
+        assert_eq!(captured["result"]["source"], "rust-pty-manager");
+        assert_eq!(captured["result"]["rawScrollbackReturned"], true);
+        assert_eq!(captured["result"]["sensitiveOutputPossible"], true);
+        assert_eq!(captured["result"]["readOnly"], true);
+
+        let unauthenticated = call(
+            &state,
+            "  ",
+            serde_json::json!({
+                "sessionId": terminal_id,
+                "lines": 2,
+                "clean": false,
+            }),
+        );
+        assert!(matches!(
+            unauthenticated,
+            Err(ApiError::Forbidden(message)) if message.contains("authenticated terminal capture Principal")
+        ));
+
+        let invalid = call(
+            &state,
+            "capture-reader",
+            serde_json::json!({
+                "sessionId": "%404",
+                "lines": 3,
+                "clean": false,
+            }),
+        );
+        assert!(matches!(
+            invalid,
+            Err(ApiError::BadRequest(message)) if message.contains("unknown terminal reference")
+        ));
+
+        let stale = call(
+            &state,
+            "capture-reader",
+            serde_json::json!({
+                "sessionId": stale_terminal_id,
+                "lines": 4,
+                "clean": true,
+            }),
+        );
+        assert!(matches!(
+            stale,
+            Err(ApiError::NotFound(value)) if value == stale_terminal_id
+        ));
+
+        let pty_failure = call(
+            &state,
+            "capture-reader",
+            serde_json::json!({
+                "sessionId": pty_failure_id,
+                "lines": 5,
+                "clean": false,
+            }),
+        );
+        assert!(matches!(
+            pty_failure,
+            Err(ApiError::Internal(message)) if message.contains("scrollback capture")
+        ));
+
+        let Json(schema_rejected) = call(
+            &state,
+            "capture-reader",
+            serde_json::json!({ "lines": 6, "clean": true }),
+        )
+        .expect("schema failure remains a typed tool result");
+        assert_eq!(schema_rejected["ok"], false);
+        assert_eq!(
+            schema_rejected["error"]["schema_violation"]["missing"],
+            serde_json::json!(["sessionId"])
+        );
+
+        let denied_state = ApiState::new(pty.clone(), crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(db.clone()))
+            .with_governance(Arc::new(Governance::with_access(Box::new(
+                DenyBlockedCapture,
+            ))));
+        let denied = call(
+            &denied_state,
+            "blocked-reader",
+            serde_json::json!({
+                "sessionId": terminal_id,
+                "lines": 7,
+                "clean": false,
+            }),
+        );
+        assert!(matches!(denied, Err(ApiError::Forbidden(_))));
+        assert!(!scoped_tool_names(&denied_state, "blocked-reader")
+            .iter()
+            .any(|name| name == "terminal.capture"));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_terminal_capture_read".to_string()),
+                    limit: Some(20),
+                    ..Default::default()
+                })
+            })
+            .expect("read terminal capture audit");
+        assert_eq!(rows.len(), 6);
+        assert!(rows.iter().all(|row| row.session_id.is_none()));
+        assert!(rows.iter().all(|row| row.terminal_id.is_none()));
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.redacted_payload_json["status"] == "accepted")
+                .count(),
+            1
+        );
+        let accepted = rows
+            .iter()
+            .find(|row| row.redacted_payload_json["status"] == "accepted")
+            .expect("accepted capture audit");
+        assert_eq!(accepted.agent_id.as_deref(), Some("capture-reader"));
+        assert_eq!(accepted.redacted_payload_json["operation"], "capture");
+        assert_eq!(accepted.redacted_payload_json["requestedLineBound"], 2);
+        assert_eq!(accepted.redacted_payload_json["clean"], false);
+        assert_eq!(
+            accepted.redacted_payload_json["outputCharacterCount"],
+            raw_output.chars().count()
+        );
+        assert_eq!(accepted.redacted_payload_json["outputLineCount"], 2);
+        for field in ["sessionDigest", "inputDigest"] {
+            let digest = accepted.redacted_payload_json[field]
+                .as_str()
+                .expect("terminal capture digest");
+            assert_eq!(digest.len(), 64);
+            assert!(digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+        }
+        for row in &rows {
+            assert_eq!(row.redacted_payload_json["capturedTextLogged"], false);
+            assert_eq!(row.redacted_payload_json["terminalIdentityLogged"], false);
+            assert_eq!(row.redacted_payload_json["requestPayloadLogged"], false);
+            if row.redacted_payload_json["status"] == "rejected" {
+                assert_eq!(row.redacted_payload_json["outputCharacterCount"], 0);
+                assert_eq!(row.redacted_payload_json["outputLineCount"], 0);
+            }
+        }
+        for rejection_code in [
+            "invalid_terminal_identity",
+            "stale_terminal_identity",
+            "pty_capture_failed",
+            "schema_violation",
+            "governance_denied",
+        ] {
+            assert!(rows
+                .iter()
+                .any(|row| { row.redacted_payload_json["rejectionCode"] == rejection_code }));
+        }
+        let audit_text = serde_json::to_string(&rows).expect("serialize capture audit");
+        for forbidden in [
+            terminal_id,
+            stale_terminal_id,
+            pty_failure_id,
+            "%404",
+            "AIO39_SECRET_OUTPUT_MUST_NOT_BE_LOGGED",
+            "second raw line",
+        ] {
+            assert!(!audit_text.contains(forbidden), "audit exposed {forbidden}");
+        }
+
+        let audit_failure_db = Arc::new(ManagedDb::new(
+            Database::open_memory().expect("audit failure memory db"),
+        ));
+        audit_failure_db
+            .with(|database| {
+                database
+                    .conn()
+                    .execute_batch(
+                        "CREATE TRIGGER reject_aio39_terminal_capture_audit
+                         BEFORE INSERT ON audit_event_journal
+                         WHEN NEW.kind = 'mcp_terminal_capture_read'
+                         BEGIN
+                             SELECT RAISE(ABORT, 'simulated terminal capture audit failure');
+                         END;",
+                    )
+                    .map_err(|error| error.to_string())
+            })
+            .expect("install audit failure trigger");
+        let audit_failure_state = ApiState::new(pty, crate::api::AuthConfig::with_token("t"))
+            .with_db(Some(audit_failure_db.clone()));
+        let Json(captured_after_audit_failure) = call(
+            &audit_failure_state,
+            "capture-reader",
+            serde_json::json!({
+                "sessionId": terminal_id,
+                "lines": 2,
+                "clean": false,
+            }),
+        )
+        .expect("audit failure preserves the single capture result");
+        assert_eq!(captured_after_audit_failure["result"]["text"], raw_output);
+        assert_eq!(
+            captured_after_audit_failure["result"]["rawScrollbackReturned"],
+            true
+        );
+        let audit_failure_rows = audit_failure_db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_terminal_capture_read".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read empty failed-audit journal");
+        assert!(audit_failure_rows.is_empty());
     }
 
     #[test]

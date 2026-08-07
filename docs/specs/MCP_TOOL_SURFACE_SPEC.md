@@ -116,6 +116,18 @@ read-mostly (`terminal.list`, `terminal.capture`, `mux.workspaces.list`,
 The `aelyris.mcp.v1` catalog in §3 **supersedes and extends** that prototype with the
 full worktree/agent/diff/gate surface.
 
+`terminal.capture` is the explicit exception to value-minimized coordination reads:
+it deliberately returns bounded, non-redacted PTY scrollback through the existing
+`PtyManager::capture` owner. Principal-scoped discovery and accepted results identify
+the tool as observe-only, sensitive raw output, and read-only. Accepted and rejected
+reads retain only the authenticated actor, one-way session/input digests, requested
+line/clean bounds, aggregate returned character/line counts, status, and rejection
+code. Captured text, terminal/session ids, prompts, commands, bearer values,
+environment values, and PTY internals never enter that authority audit. Audit failure
+after a successful capture is logged without replaying the PTY read or replacing the
+already obtained result; invalid/stale identities, Governance denial, and PTY errors
+remain typed failures rather than empty captures.
+
 `mux.workspace.safeInput` and REST `/mux/workspaces/{id}/input` both pass the
 authenticated Principal into the one `TerminalInputAuthority` envelope. Neither
 surface accepts an actor field; command-risk, approval, target-scope, quarantine,

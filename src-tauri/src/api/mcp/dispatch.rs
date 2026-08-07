@@ -289,6 +289,132 @@ pub(super) fn resolve_mcp_terminal_ref(_state: &ApiState, reference: &str) -> Ap
     Ok(trimmed.to_string())
 }
 
+fn terminal_capture_session_digest(session_reference: &str) -> String {
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.terminal-capture-session\n{}",
+        session_reference.trim()
+    ))
+    .as_str()
+    .to_string()
+}
+
+fn terminal_capture_input_digest(
+    session_digest: &str,
+    requested_line_bound: Option<u64>,
+    clean: Option<bool>,
+) -> String {
+    let requested_line_bound = requested_line_bound
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "invalid".to_string());
+    let clean = clean
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "invalid".to_string());
+    crate::command_risk::approval::command_hash(&format!(
+        "aelyris.terminal-capture-input\n{session_digest}\n{requested_line_bound}\n{clean}"
+    ))
+    .as_str()
+    .to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_mcp_terminal_capture(
+    state: &ApiState,
+    actor: &str,
+    session_digest: &str,
+    input_digest: &str,
+    requested_line_bound: Option<u64>,
+    clean: Option<bool>,
+    output_character_count: usize,
+    output_line_count: usize,
+    status: &str,
+    rejection_code: Option<&str>,
+) {
+    let actor = actor.trim();
+    if actor.is_empty() {
+        return;
+    }
+    let Some(db) = state.db.as_ref() else {
+        return;
+    };
+    let event = crate::db::AuditJournalAppend {
+        workspace_id: state.governance.tenant_of(actor),
+        thread_id: None,
+        session_id: None,
+        pane_id: None,
+        terminal_id: None,
+        agent_id: Some(actor.to_string()),
+        workflow_id: None,
+        task_id: None,
+        correlation_id: Some(input_digest.to_string()),
+        kind: "mcp_terminal_capture_read".to_string(),
+        severity: if status == "accepted" {
+            "info".to_string()
+        } else {
+            "warning".to_string()
+        },
+        source: "mcp-terminal-capture".to_string(),
+        confidence: None,
+        payload_json: serde_json::json!({
+            "actor": actor,
+            "operation": "capture",
+            "sessionDigest": session_digest,
+            "inputDigest": input_digest,
+            "requestedLineBound": requested_line_bound,
+            "clean": clean,
+            "outputCharacterCount": output_character_count,
+            "outputLineCount": output_line_count,
+            "status": status,
+            "rejectionCode": rejection_code,
+            "capturedTextLogged": false,
+            "terminalIdentityLogged": false,
+            "requestPayloadLogged": false,
+        }),
+    };
+    if let Err(error) = db.with(|database| database.append_audit_journal_event(&event)) {
+        tracing::error!(
+            actor,
+            session_digest,
+            input_digest,
+            error = %error,
+            "terminal capture audit failed"
+        );
+    }
+}
+
+pub(super) fn audit_terminal_capture_predispatch_rejection(
+    state: &ApiState,
+    actor: &str,
+    arguments: &serde_json::Value,
+    rejection_code: &str,
+) {
+    let session_reference = arguments
+        .get("sessionId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let requested_line_bound = match arguments.get("lines") {
+        None => Some(200),
+        Some(value) => value.as_u64(),
+    };
+    let clean = match arguments.get("clean") {
+        None => Some(true),
+        Some(value) => value.as_bool(),
+    };
+    let session_digest = terminal_capture_session_digest(session_reference);
+    let input_digest = terminal_capture_input_digest(&session_digest, requested_line_bound, clean);
+    audit_mcp_terminal_capture(
+        state,
+        actor,
+        &session_digest,
+        &input_digest,
+        requested_line_bound,
+        clean,
+        0,
+        0,
+        "rejected",
+        Some(rejection_code),
+    );
+}
+
 struct McpPaneMetadataTarget {
     terminal_id: String,
     client_id_present: bool,
@@ -3730,15 +3856,120 @@ pub(super) async fn dispatch_authorized(
             "sessions": state.pty.list_info(),
         }),
         "terminal.capture" => {
-            let session_ref = arg_string(&args, "sessionId")?;
-            let session_id = resolve_mcp_terminal_ref(&state, &session_ref)?;
+            let actor = actor.trim();
+            if actor.is_empty() {
+                return Err(ApiError::Forbidden(
+                    "authenticated terminal capture Principal is unavailable".to_string(),
+                ));
+            }
             let lines = arg_usize(&args, "lines", 200)?.clamp(1, 10_000);
             let clean = arg_bool(&args, "clean", true);
-            let text = state
-                .pty
-                .capture(&session_id, lines, clean)
-                .map_err(|err| super::super::map_pty_err(&session_id, err))?;
-            serde_json::json!({ "sessionId": session_id, "text": text, "lines": lines, "clean": clean })
+            let raw_session_ref = args
+                .get("sessionId")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let session_ref = match arg_string(&args, "sessionId") {
+                Ok(session_ref) => session_ref,
+                Err(error) => {
+                    let session_digest = terminal_capture_session_digest(raw_session_ref);
+                    let input_digest = terminal_capture_input_digest(
+                        &session_digest,
+                        Some(lines as u64),
+                        Some(clean),
+                    );
+                    audit_mcp_terminal_capture(
+                        &state,
+                        actor,
+                        &session_digest,
+                        &input_digest,
+                        Some(lines as u64),
+                        Some(clean),
+                        0,
+                        0,
+                        "rejected",
+                        Some("invalid_terminal_identity"),
+                    );
+                    return Err(error);
+                }
+            };
+            let session_id = match resolve_mcp_terminal_ref(&state, &session_ref) {
+                Ok(session_id) => session_id,
+                Err(error) => {
+                    let session_digest = terminal_capture_session_digest(&session_ref);
+                    let input_digest = terminal_capture_input_digest(
+                        &session_digest,
+                        Some(lines as u64),
+                        Some(clean),
+                    );
+                    audit_mcp_terminal_capture(
+                        &state,
+                        actor,
+                        &session_digest,
+                        &input_digest,
+                        Some(lines as u64),
+                        Some(clean),
+                        0,
+                        0,
+                        "rejected",
+                        Some("invalid_terminal_identity"),
+                    );
+                    return Err(error);
+                }
+            };
+            let session_digest = terminal_capture_session_digest(&session_id);
+            let input_digest =
+                terminal_capture_input_digest(&session_digest, Some(lines as u64), Some(clean));
+            let text = match state.pty.capture(&session_id, lines, clean) {
+                Ok(text) => text,
+                Err(error) => {
+                    let rejection_code = if matches!(&error, crate::pty::PtyError::NotFound(_)) {
+                        "stale_terminal_identity"
+                    } else {
+                        "pty_capture_failed"
+                    };
+                    audit_mcp_terminal_capture(
+                        &state,
+                        actor,
+                        &session_digest,
+                        &input_digest,
+                        Some(lines as u64),
+                        Some(clean),
+                        0,
+                        0,
+                        "rejected",
+                        Some(rejection_code),
+                    );
+                    return Err(super::super::map_pty_err(&session_id, error));
+                }
+            };
+            let output_character_count = text.chars().count();
+            let output_line_count = if text.is_empty() {
+                0
+            } else {
+                text.lines().count()
+            };
+            audit_mcp_terminal_capture(
+                &state,
+                actor,
+                &session_digest,
+                &input_digest,
+                Some(lines as u64),
+                Some(clean),
+                output_character_count,
+                output_line_count,
+                "accepted",
+                None,
+            );
+            serde_json::json!({
+                "sessionId": session_id,
+                "text": text,
+                "lines": lines,
+                "clean": clean,
+                "source": "rust-pty-manager",
+                "rawScrollbackReturned": true,
+                "sensitiveOutputPossible": true,
+                "readOnly": true,
+            })
         }
         "mux.workspaces.list" => {
             let mux = state

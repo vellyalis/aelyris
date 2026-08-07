@@ -59,7 +59,12 @@ fn build_tools_list_value() -> serde_json::Value {
             },
             {
                 "name": "terminal.capture",
-                "description": "Capture bounded scrollback from a live native PTY session.",
+                "description": "Observe bounded raw scrollback from a live native PTY session. The returned text is intentionally not redacted and may contain sensitive output; this read-only tool remains independently authorized for the authenticated Principal.",
+                "accessMode": "observe-only",
+                "outputSensitivity": "sensitive-raw-output",
+                "rawScrollbackReturned": true,
+                "sensitiveOutputPossible": true,
+                "readOnly": true,
                 "inputSchema": {
                     "type": "object",
                     "required": ["sessionId"],

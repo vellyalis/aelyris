@@ -3,10 +3,10 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `POST-GMV PRODUCT ACCESS`.
-ACTIVE SLICE: `AIO-39`.
-LAST COMPLETED SLICE: `AIO-38`.
-NEXT IMPLEMENTATION SLICE: `AIO-39`.
+CURRENT PHASE: `GMV CLAIM CONFIRMATION`.
+ACTIVE SLICE: `GMV-3`.
+LAST COMPLETED SLICE: `AIO-39`.
+NEXT IMPLEMENTATION SLICE: `GMV-3`.
 
 ```yaml
 continuation_contract:
@@ -96,7 +96,7 @@ Current portfolio classification:
 | MCP value-minimized pending-decision read | **COMPLETE** | Pending approvals retain exact decision identity/risk/state plus a session digest, while durable merge intents retain only exact intent identity/state/timestamps and evidence-presence flags |
 | MCP path-minimized worktree inventory | **COMPLETE** | Worktree inventory now returns exact name/branch/HEAD/status in stable order plus a repository digest, without echoing repository or absolute worktree paths |
 | MCP path-minimized worktree mutation results | **COMPLETE** | Create reuses the safe inventory projection and remove returns exact worktree identity/deletion intent plus repository digest, without repository or absolute worktree paths |
-| MCP principal-bound terminal capture evidence | **NOW** | Raw scrollback capture is independently authorized but accepted reads are not attributable and the response does not state its sensitive-output boundary |
+| MCP principal-bound terminal capture evidence | **COMPLETE** | Bounded raw scrollback remains unredacted by design, while discovery/results state the sensitive read-only boundary and accepted/rejected reads retain Principal-bound value-free evidence |
 | Fleet Briefing | **COMPLETE** | Observe mode now summarizes durable Event Bus facts since the operator's last mark |
 | Low-risk approval batching | **COMPLETE** | Decision Inbox batches only visible, strictly classified low-risk live gates through the existing fingerprint-checked resolver |
 | Honest Cost Meter | **COMPLETE** | Command mode shows reported fleet usage, configured caps, and telemetry confidence without treating unknown as zero |
@@ -248,6 +248,12 @@ Claim-Eligible transition is a live-provider confirmation, not another repositor
 architecture phase. The local Codex account refused that confirmation on 2026-08-05
 because its usage window is limited until 2026-08-08; this external quota does not
 reopen settlement, CI, verifier, or framework work.
+
+Current frontier after `AIO-39`: run the existing real-Codex confirmation when the
+provider window reopens on 2026-08-08, then perform portfolio selection from fresh
+user/runtime evidence. Until that external check is available, `GMV-3` owns no new
+repository implementation, verifier family, framework expansion, or substitute
+provider claim.
 
 On 2026-08-05 the ChatGPT controller also ran the existing fresh-profile journey
 with an isolated deterministic Codex-compatible provider double. That run exercised
@@ -1688,7 +1694,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated bounded terminal capture with an
 explicit sensitive-output boundary and value-free read evidence.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Keep `terminal.capture` over the existing native `PtyManager::capture`, terminal-id
   resolution, Governance, and bounded line/clean options. Do not add a scrollback
@@ -1750,7 +1756,8 @@ projection `AIO-33` and MCP unified fleet coverage `AIO-34` are also complete. M
 deterministic agent-activity read `AIO-35` is also complete. MCP value-minimized
 pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inventory
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
-also complete. MCP principal-bound terminal capture evidence `AIO-39` is active;
+also complete. MCP principal-bound terminal capture evidence `AIO-39` is also
+complete. `GMV-3` live-provider claim confirmation is the active frontier;
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
