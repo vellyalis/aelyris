@@ -11,10 +11,10 @@ const ARTIFACTS = {
   postcheck: ".codex-auto/production-smoke/postcheck-write-smoke/real-os-suspend-native-postcheck-write-smoke.json",
 };
 const NATIVE_PROOF_SOURCE_PATHS = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ];
 
 const SOURCE_GROUPS = {

@@ -299,7 +299,7 @@ Each future implementation phase must satisfy these controls:
 - No TODO placeholders in shipped paths.
 - `src/App.tsx` must not grow; add focused modules/hooks instead.
 - Large Rust files such as `src-tauri/src/api/mcp.rs`,
-  `src-tauri/src/ipc/commands.rs`, and `src-tauri/src/bin/aelyris_native.rs`
+  `src-tauri/src/ipc/commands.rs`, and `src-tauri/src/aelyris_native.rs`
   must not absorb new product logic without an extraction plan.
 - Each phase updates requirement/spec/design/verifier together.
 - The claim boundary remains alpha / not release-ready until green gates exist.

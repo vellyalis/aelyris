@@ -50,7 +50,7 @@ Everything above this seam (GridSnapshot, damage tracking, selection/search/link
 - **See-through window**: transparency requires NO DWM backdrop material (root-cause fix `807322c`); wallpaper/mood/glass hierarchy live in CSS with a single-blur rule. CDP cannot verify transparency — screenshot-based proof only.
 - **ConPTY limits** (reference-verified): OSC ~512B truncation (hence the chunked image protocol), APC stripped, cell width must be measured not assumed.
 - **WebView2 long-session degradation** is a known risk for 24/7 fleet operation; the persistence design (SQLite = truth, UI = reloadable projection) is the standing mitigation.
-- **Native proof assets**: `src-tauri/src/bin/aelyris_native.rs` (~8.8k lines, unshipped spike) carries `DirectWriteTextShaper` (:15) and capture/render subcommands — groundwork for Stage 2, not shipped product.
+- **Native proof assets**: `src-tauri/src/aelyris_native.rs` (~8.8k lines, unshipped spike) carries `DirectWriteTextShaper` (:15) and capture/render subcommands — groundwork for Stage 2, not shipped product.
 - **Font stack risk**: proof path uses `fontdue → ttf-parser 0.21` (unmaintained; stack-risk gate classifies it release-blocking). See §7.
 
 ## 3. Decision record — where native code is used

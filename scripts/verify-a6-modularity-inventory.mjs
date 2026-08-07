@@ -54,7 +54,7 @@ const owners = [
     nextSlice: "A6.5",
   },
   {
-    path: "src-tauri/src/bin/aelyris_native.rs",
+    path: "src-tauri/src/aelyris_native.rs",
     owner: "native proof CLI entrypoint",
     baselineLines: 8827,
     targetLines: 1200,
@@ -677,10 +677,10 @@ const dbSlice = {
   phaseComplete: false,
 };
 
-const nativeEntrypointPath = "src-tauri/src/bin/aelyris_native.rs";
-const nativeRouterOwnerPath = "src-tauri/src/bin/aelyris_native/router.rs";
-const nativeReadinessOwnerPath = "src-tauri/src/bin/aelyris_native/readiness.rs";
-const nativeClientOwnerPath = "src-tauri/src/bin/aelyris_native/client.rs";
+const nativeEntrypointPath = "src-tauri/src/aelyris_native.rs";
+const nativeRouterOwnerPath = "src-tauri/src/aelyris_native/router.rs";
+const nativeReadinessOwnerPath = "src-tauri/src/aelyris_native/readiness.rs";
+const nativeClientOwnerPath = "src-tauri/src/aelyris_native/client.rs";
 const nativeOwnerPaths = [nativeEntrypointPath, nativeRouterOwnerPath, nativeReadinessOwnerPath, nativeClientOwnerPath];
 const nativeEntrypointSource = read(nativeEntrypointPath);
 const nativeRouterSource = read(nativeRouterOwnerPath);
@@ -815,6 +815,12 @@ const nativeDefaultUnavailable =
   nativeMetadataExecution.status === 0 &&
   nativeMetadataTarget?.["required-features"]?.length === 1 &&
   nativeMetadataTarget["required-features"][0] === "native-proof-cli";
+const nativeEntrypointPathNormalized = nativeMetadataTarget?.src_path?.replaceAll("\\", "/") ?? "";
+const nativeEntrypointOutsideTauriAutoDiscovery =
+  nativeEntrypointPathNormalized.endsWith("/src/aelyris_native.rs") &&
+  !nativeEntrypointPathNormalized.includes("/src/bin/") &&
+  !existsSync(join(root, "src-tauri", "src", "bin", "aelyris_native.rs")) &&
+  !existsSync(join(root, "src-tauri", "src", "bin", "aelyris_native"));
 const focusedNativeTestArgs = [
   "test",
   "--manifest-path",
@@ -935,7 +941,7 @@ const nativeNegativeTopologyProof = {
   ),
   freshnessSourceMutationRejected: !nativeOwnerPaths.every((path) =>
     nativeFreshnessConsumers["scripts/verify-native-text-shaping-fallback.mjs"]
-      .replace(nativeClientOwnerPath, "src-tauri/src/bin/aelyris_native/missing-client.rs")
+      .replace(nativeClientOwnerPath, "src-tauri/src/aelyris_native/missing-client.rs")
       .includes(path),
   ),
 };
@@ -950,6 +956,7 @@ const nativeSourceContractComplete =
   nativeHostBehaviorBoundaryRetained &&
   nativeFeatureBoundaryDeclared &&
   nativeDefaultUnavailable &&
+  nativeEntrypointOutsideTauriAutoDiscovery &&
   nativeProofInvocationsOptIn &&
   nativeFreshnessConsumersCausal &&
   nativeScoreConsumerCausal &&
@@ -983,6 +990,7 @@ const nativeSlice = {
   hostBehaviorBoundaryRetained: nativeHostBehaviorBoundaryRetained,
   featureBoundaryDeclared: nativeFeatureBoundaryDeclared,
   defaultUnavailable: nativeDefaultUnavailable,
+  entrypointOutsideTauriAutoDiscovery: nativeEntrypointOutsideTauriAutoDiscovery,
   proofInvocationsOptIn: nativeProofInvocationsOptIn,
   freshnessConsumers: {
     paths: nativeFreshnessConsumerPaths,

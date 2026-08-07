@@ -57,7 +57,7 @@ entry, with no wildcard-only coverage.
 
 | Existing source | Target owner | Migration action |
 |---|---|---|
-| `src-tauri/src/bin/aelyris_native.rs` | tests/verifier/app shell | decompose; stop god-file growth |
+| `src-tauri/src/aelyris_native.rs` | tests/verifier/app shell | decompose; stop god-file growth |
 | `src-tauri/src/term/render_frame.rs` | terminal model/view | preserve schema; extract |
 | `src-tauri/src/term/render_pipeline.rs` | terminal render pipeline | productionize |
 | `src-tauri/src/term/native_input.rs` | platform input | reuse/complete IME/paste |

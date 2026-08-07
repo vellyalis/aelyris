@@ -149,7 +149,7 @@ End with: (a) all Stop-And-Ask questions raised, (b) proposals NOT implemented (
 ## 11. Out-of-scope (do not touch, even if tempting)
 
 - `src-tauri/src/api/mod.rs`, `api/mux.rs`, `ipc/interactive_commands.rs`, `lib.rs` (except nothing — you don't need lib.rs; handler list is unchanged by these phases… note: Phase 2/3 remove no registered handlers, only unregistered modules), `package.json`, `AGENTS.md`, `CLAUDE.md`, `docs/specs/CONTEXT_SESSION_LIFECYCLE_*` (unless clean, Phase 1 step 4), `docs/specs/README.md` — WU-RT-1 territory.
-- `src-tauri/src/bin/aelyris_native.rs` (unshipped spike, promote/retire is a product decision).
+- `src-tauri/src/aelyris_native.rs` (unshipped spike, promote/retire is a product decision).
 - Splitting `mcp.rs`/`api/mod.rs`/`queries.rs`; DB schema/migrations; MCP schema enforcement; invoke<T> validation framework; wgpu renderer — all later sprints (see `docs/specs/QUALITY_REMEDIATION_PLAN_2026-07-02.md` S4/S5).
 - Any doc rewrites beyond the single CX-4 row (Sprint 1 is a separate work order).
 - Formatting sweeps, dependency bumps, renames-for-taste.

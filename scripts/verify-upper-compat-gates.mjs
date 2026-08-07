@@ -55,10 +55,10 @@ const mcpSource = [
 const dbSource = read("src-tauri/src/db/queries.rs");
 const migrationSource = read("src-tauri/src/db/migrations.rs");
 const nativeSource = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ]
   .map(read)
   .join("\n");

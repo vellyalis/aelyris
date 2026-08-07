@@ -52,8 +52,8 @@ const nativeClientSources = [
   "scripts/verify-native-client-spike.mjs",
   "src-tauri/Cargo.toml",
   "src-tauri/Cargo.lock",
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
   "src-tauri/src/term/render_frame.rs",
   "src-tauri/src/term/render_pipeline.rs",
 ];

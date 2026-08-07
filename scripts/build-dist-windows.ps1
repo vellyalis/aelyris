@@ -9,6 +9,20 @@ $PackageJson = Get-Content -LiteralPath (Join-Path $Root "package.json") -Raw | 
 $MsiPath = Join-Path $BundleRoot "msi\Aelyris_$($PackageJson.version)_x64_en-US.msi"
 $UpdaterSigningEnvPresent = -not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or -not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PATH)
 $NoSignArgs = if ($UpdaterSigningEnvPresent) { @() } else { @('--no-sign') }
+$NativeProofEntrypoint = Join-Path $Root "src-tauri\src\aelyris_native.rs"
+$NativeProofAutoDiscoveryPaths = @(
+  (Join-Path $Root "src-tauri\src\bin\aelyris_native.rs"),
+  (Join-Path $Root "src-tauri\src\bin\aelyris_native")
+)
+
+if (-not (Test-Path -LiteralPath $NativeProofEntrypoint -PathType Leaf)) {
+  throw "Feature-gated aelyris-native entrypoint is missing at $NativeProofEntrypoint"
+}
+
+$AccidentalNativeProofPaths = @($NativeProofAutoDiscoveryPaths | Where-Object { Test-Path -LiteralPath $_ })
+if ($AccidentalNativeProofPaths.Count -gt 0) {
+  throw "Feature-gated aelyris-native proof sources must stay outside src-tauri\src\bin so normal Tauri bundles do not auto-discover them: $($AccidentalNativeProofPaths -join ', ')"
+}
 
 function Invoke-Checked {
   param(
@@ -62,7 +76,8 @@ try {
     -FailureMessage "Tauri NSIS build failed"
 
   $MsiBuildStarted = Get-Date
-  & $Tauri build --ci --config $TauriConfig @NoSignArgs --bundles msi
+  $MsiArguments = @("build", "--ci", "--config", $TauriConfig) + $NoSignArgs + @("--bundles", "msi")
+  & $Tauri @MsiArguments
   $MsiExitCode = $LASTEXITCODE
 
   if ($MsiExitCode -eq 0) {
@@ -70,7 +85,11 @@ try {
     exit 0
   }
 
-  $WixObj = Get-Item -LiteralPath (Join-Path $WixDir "main.wixobj") -ErrorAction Stop
+  $WixObjPath = Join-Path $WixDir "main.wixobj"
+  if (-not (Test-Path -LiteralPath $WixObjPath -PathType Leaf)) {
+    throw "Tauri MSI build failed before producing a fresh WiX object (exit code $MsiExitCode)"
+  }
+  $WixObj = Get-Item -LiteralPath $WixObjPath -ErrorAction Stop
   if ($WixObj.LastWriteTime -lt $MsiBuildStarted.AddMinutes(-1)) {
     throw "Tauri MSI build failed before producing a fresh WiX object (exit code $MsiExitCode)"
   }

@@ -21,10 +21,10 @@ const APP_PAGE_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_TAURI_PAGE_TIMEO
 const PASTE_SENDER_TIMEOUT_MS = Number.parseInt(process.env.AELYRIS_NATIVE_PASTE_TIMEOUT_MS ?? "30000", 10);
 const WM_PASTE = "0x0302";
 const NATIVE_PROOF_SOURCE_PATHS = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ];
 
 function writeArtifact(report) {

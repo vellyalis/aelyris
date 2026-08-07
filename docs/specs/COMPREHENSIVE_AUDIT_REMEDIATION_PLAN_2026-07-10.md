@@ -811,7 +811,7 @@ Primary targets:
 - `src-tauri/src/api/mcp.rs`
 - `src-tauri/src/ipc/commands.rs`
 - `src-tauri/src/db/queries.rs`
-- `src-tauri/src/bin/aelyris_native.rs`
+- `src-tauri/src/aelyris_native.rs`
 
 Required work:
 
@@ -1627,7 +1627,7 @@ Completion evidence:
 #### **A6.6 Complete - Native Proof CLI Boundary**
 
 Inventory the command router, proof-domain modules, side effects, artifact schemas,
-and host behavior in `src-tauri/src/bin/aelyris_native.rs` before extraction.
+and host behavior in `src-tauri/src/aelyris_native.rs` before extraction.
 Isolate the existing proof binary behind an optional Cargo feature or equivalent
 proof-only package boundary. This slice may reorganize existing proof behavior but
 must not expand native product functionality; A8.0 remains the sole activation

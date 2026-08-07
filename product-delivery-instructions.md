@@ -254,8 +254,14 @@ because its usage window is limited until 2026-08-08; this external quota does n
 reopen settlement, CI, verifier, or framework work.
 
 The real-Codex confirmation remains externally blocked until the provider window
-reopens on 2026-08-08. The owner explicitly authorized bounded product polish during
-that wait, and `AIO-40` through `AIO-42` are now complete. The exact frontier returns
+reopens on 2026-08-08. The owner explicitly authorized bounded product/release polish
+during that wait, and `AIO-40` through `AIO-43` are now complete. A fresh local
+distribution
+build also exposed and repaired a release-packaging regression: Tauri no longer
+auto-discovers the feature-gated `aelyris-native` proof binary as a shipping target,
+and the canonical Windows wrapper now produces both unsigned NSIS and MSI artifacts
+without weakening the proof-only feature boundary. This repair does not grant signing,
+updater, installation, or release-readiness credit. The exact frontier remains
 to the existing `GMV-3` provider check; those polish slices do not substitute for,
 weaken, or manufacture its pending claim.
 

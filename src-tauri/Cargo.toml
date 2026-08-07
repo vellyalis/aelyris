@@ -18,7 +18,11 @@ path = "src/bin/aelys.rs"
 
 [[bin]]
 name = "aelyris-native"
-path = "src/bin/aelyris_native.rs"
+# Keep this proof-only entrypoint outside `src/bin`. Tauri CLI 2.11.2 first
+# honors `required-features`, then physically scans every `src/bin` entry and
+# would otherwise re-add the disabled proof target to normal distribution
+# bundles under an underscore-normalized binary name.
+path = "src/aelyris_native.rs"
 required-features = ["native-proof-cli"]
 
 [lib]

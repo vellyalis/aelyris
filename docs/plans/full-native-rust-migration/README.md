@@ -95,7 +95,7 @@ Aelyris は「ゼロからネイティブ版を作り直す」段階ではない
 - `docs/specs/PHASE_0_1_ARCHITECTURE_SPEC.md`
 - `src-tauri/Cargo.toml`
 - `src-tauri/src/lib.rs`
-- `src-tauri/src/bin/aelyris_native.rs`
+- `src-tauri/src/aelyris_native.rs`
 - `src-tauri/src/term/render_frame.rs`
 - `src-tauri/src/term/render_pipeline.rs`
 - `src-tauri/src/term/native_input.rs`

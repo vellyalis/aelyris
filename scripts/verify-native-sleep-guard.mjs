@@ -20,10 +20,10 @@ const nativeBin = resolve(
   explicitNativeExe ?? join(root, "src-tauri", "target", "debug", `aelyris-native${extension}`),
 );
 const nativeProofSourcePaths = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ];
 const out = resolve(
   process.env.AELYRIS_NATIVE_SLEEP_GUARD_OUT ??

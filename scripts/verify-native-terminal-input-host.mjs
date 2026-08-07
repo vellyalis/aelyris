@@ -36,10 +36,10 @@ const terminalCanvas = source("src/features/terminal/TerminalCanvas.tsx");
 const nativeClientArtifactPath = ".codex-auto/quality/native-client-spike.json";
 const nativeClient = readJson(nativeClientArtifactPath);
 const nativeProofSourcePaths = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ];
 const nativeClientFresh =
   nativeClient?.status === "passed" &&

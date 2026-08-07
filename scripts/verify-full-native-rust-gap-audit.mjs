@@ -72,10 +72,10 @@ function nearlyEqual(actual, expected, epsilon = 0.001) {
 const packageJson = source("package.json");
 const cargoToml = source("src-tauri/Cargo.toml");
 const nativeProofSourcePaths = [
-  "src-tauri/src/bin/aelyris_native.rs",
-  "src-tauri/src/bin/aelyris_native/client.rs",
-  "src-tauri/src/bin/aelyris_native/readiness.rs",
-  "src-tauri/src/bin/aelyris_native/router.rs",
+  "src-tauri/src/aelyris_native.rs",
+  "src-tauri/src/aelyris_native/client.rs",
+  "src-tauri/src/aelyris_native/readiness.rs",
+  "src-tauri/src/aelyris_native/router.rs",
 ];
 const aelyrisNative = nativeProofSourcePaths.map(source).join("\n");
 const nativeProofSourceMtime = Math.max(...nativeProofSourcePaths.map(mtime));
@@ -1374,7 +1374,7 @@ const report = {
       "package.json",
       "scripts/evidence-provenance.mjs",
       "scripts/release-evidence-truth.mjs",
-      "src-tauri/src/bin/aelyris_native.rs",
+      "src-tauri/src/aelyris_native.rs",
       nativeClientPath,
       nativeBoundaryPath,
       nativeInputPath,

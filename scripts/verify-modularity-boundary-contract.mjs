@@ -13,7 +13,7 @@ const sourcePaths = {
   app: "src/App.tsx",
   ipcCommands: "src-tauri/src/ipc/commands.rs",
   mcpApi: "src-tauri/src/api/mcp.rs",
-  nativeBin: "src-tauri/src/bin/aelyris_native.rs",
+  nativeBin: "src-tauri/src/aelyris_native.rs",
 };
 
 const godFileBaselines = [

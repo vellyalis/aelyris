@@ -25,7 +25,7 @@ const expectedOwnerPaths = [
   "src-tauri/src/ipc/commands.rs",
   "src-tauri/src/api/mcp.rs",
   "src-tauri/src/db/queries.rs",
-  "src-tauri/src/bin/aelyris_native.rs",
+  "src-tauri/src/aelyris_native.rs",
 ];
 const head = currentGitHead(root);
 const scenarios = [];
