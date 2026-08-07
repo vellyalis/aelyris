@@ -187,6 +187,9 @@ claim.
 
 ## ADR-012 Structured Runtimes Are Replaceable Adapters
 
+Status: **adapter principle retained / OpenCode-first candidate selection superseded
+by ADR-017** (owner direction 2026-08-08).
+
 Decision: Evaluate OpenCode as the first named structured-runtime candidate in
 the post-A9 Apex V1 program. Compare OpenCode ACP, OpenCode HTTP/SSE, and the
 current visible PTY under one fixed Aelyris Mission. Promote at most one
@@ -385,3 +388,52 @@ Reconsider when:
 - fast feedback does not materially reduce local or hosted cycle time;
 - repository ownership becomes too dynamic for changed/related test selection to remain
   trustworthy.
+
+## ADR-017 Structured Runtime Admission Is Candidate-Neutral
+
+Status: **accepted** (owner direction 2026-08-08).
+
+Decision:
+
+- visible PTY remains the Universal Agent Fabric `Current Best` until executed
+  evidence proves that one structured runtime materially improves fidelity or
+  recovery without weakening Aelyris authority;
+- `V1-R0` is renamed **Structured Runtime Candidate Comparison** and does not
+  require OpenCode, ACP, HTTP/SSE, or any other named third-party runtime to be
+  installed merely to populate the comparison;
+- a candidate enters V1-R0 only after a bounded admission receipt identifies the
+  structured facts it can expose, the expected material advantage over PTY, its
+  provenance/configuration/credential boundary, and its reversible retirement path;
+- the V1-R0 decision states are `promote_none`, `promote_one`, `hold`, and
+  `reject`. `promote_none` is a successful evidence-backed outcome that retains
+  visible PTY and creates no production adapter;
+- V1-R1, V1-R2, and V1-R3 may open only after `promote_one`. OpenCode remains an
+  optional candidate or fixture when it independently satisfies admission; it is
+  not a product dependency or privileged roadmap subject.
+
+Reason:
+
+The strategic value is one governed Mission/runtime/capability/evidence identity
+surviving runtime replacement. Installing a named harness does not improve model
+quality and can duplicate session, permission, configuration, provider-auth, and
+process ownership. A comparison with no qualified candidate would manufacture
+complexity rather than test a product hypothesis.
+
+Implication:
+
+V1-R0 first freezes the visible PTY baseline, then compares only admitted
+candidate transports under the same Mission fixture. Candidate-specific protocols,
+schemas, daemons, ports, and configuration rules stay inside disposable adapters.
+No adapter is productionized unless it materially beats PTY and passes every
+authority, isolation, recovery, secret, and rollback invariant. ADR-012 remains
+the historical source of the replaceable-adapter principle; this ADR supersedes
+its OpenCode-first selection.
+
+Reconsider when:
+
+- a pinned structured runtime exposes material facts or recovery guarantees that
+  the current PTY owners cannot provide reliably;
+- a provider-native protocol becomes stable enough to pass the same admission
+  and ownership boundary without a third-party harness;
+- visible PTY fails a named Mission journey and a structured adapter is the
+  simplest reversible repair.

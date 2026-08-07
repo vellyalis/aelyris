@@ -366,10 +366,10 @@ exists, instrumentation is the first slice and no impact claim is promoted.
 
 Build:
 
-- run V1-R0 against OpenCode as the first named structured-runtime candidate,
-  compare ACP, HTTP/SSE, and the current visible PTY under one fixed Mission
-  fixture, and select at most one OpenCode production path from evidence;
-- production ACP adapter and conformance suite for supported external agents;
+- keep visible PTY as the Current Best, admit a structured-runtime candidate only
+  when a bounded receipt predicts a material fidelity or recovery advantage, and
+  run V1-R0 against only that candidate's supported transports;
+- production adapter and conformance suite only for a `promote_one` path;
 - SDK adapter for typed embedded runtimes with isolation and event mapping;
 - capability-aware session resume/fork/export and structured tool/diff/usage
   streams across adapters;
@@ -387,7 +387,7 @@ Unlocks:
 - Codex, Claude, Hermes, OpenHands-like runtimes, and future agents can join one
   governed Mission without provider-specific core ontology.
 
-#### V1-R0 — OpenCode Candidate Adapter Comparison
+#### V1-R0 — Structured Runtime Candidate Comparison
 
 Execution position: after A9 establishes the current release baseline and before
 any V1 production adapter. This plan does not alter the active
@@ -402,32 +402,48 @@ Value hypothesis:
 - Aelyris can preserve one Mission/runtime/capability/evidence identity while the
   execution engine is replaced;
 - the defensible edge is proof-carrying runtime portability and fail-closed
-  governance, not bundling OpenCode features or rebranding its TUI.
+  governance, not installing another harness or rebranding its TUI.
+
+Candidate admission:
+
+- visible PTY is the baseline and remains production Current Best by default;
+- no named runtime or transport is required. OpenCode, a provider-native protocol,
+  ACP, HTTP/SSE, SDK, or a future runtime may be proposed only as a disposable
+  candidate;
+- before adapter implementation, record the candidate's structured facts, expected
+  material advantage, provenance/license/update posture, configuration and
+  credential boundary, compatibility range, and retirement/fallback path;
+- when no candidate clears admission, V1-R0 ends as `promote_none` without adding
+  a dependency, daemon, adapter, or verifier family.
 
 Comparison contract:
 
 - run the same repository, task, model/provider class, budget class, acceptance
-  clauses, and Aelyris Mission identity through visible PTY, OpenCode ACP, and
-  OpenCode HTTP/SSE;
+  clauses, and Aelyris Mission identity through visible PTY and every admitted
+  candidate transport;
 - compare capability coverage, event fidelity, permission deny equivalence,
   diff/evidence completeness, reconnect loss, operator visibility, latency/cost,
   and secret exposure;
-- pin the OpenCode binary/version, provenance, license, auto-update policy,
-  OpenAPI/schema digest, and adapter compatibility range;
-- prove loopback-only launch, race-safe port ownership, short-lived server
-  credentials, process-tree cleanup, and configuration/provider-auth isolation.
-  `OPENCODE_CONFIG_DIR` alone is not an isolation proof because OpenCode merges
-  configuration sources;
+- pin each candidate artifact/version, provenance, license, auto-update policy,
+  protocol/schema digest, and adapter compatibility range;
+- prove the transport-specific isolation boundary: loopback-only/race-safe server
+  ownership and short-lived credentials when networked, process-tree cleanup when
+  subprocess-based, and complete configuration/provider-auth isolation. When
+  OpenCode is voluntarily admitted, `OPENCODE_CONFIG_DIR` alone is not an
+  isolation proof because OpenCode merges configuration sources;
 - map all accepted facts into the existing `AgentSession`,
   WorkExecutionAttempt/execution-generation, WorkEvent/Chronicle, capability,
-  Proofbook, review, and merge owners. Do not create an OpenCode-owned Mission,
+  Proofbook, review, and merge owners. Do not create a candidate-owned Mission,
   TaskGraph, journal, permission authority, completion truth, or merge owner;
-- treat missing OpenCode, unsupported capability, schema drift, ambiguous event
+- treat missing candidates, unsupported capability, schema drift, ambiguous event
   replay, and disconnect uncertainty as typed non-success. Preserve the visible
   PTY fallback and never claim exactly-once delivery.
 
 Decision:
 
+- **promote none** (`promote_none`) when no admitted candidate materially beats
+  visible PTY. This is a successful comparison outcome and creates no production
+  adapter or later V1 obligation;
 - **promote one path** only when it materially beats visible PTY for structured
   fidelity or recovery while every authority, secret, and owner invariant passes;
 - **hold** when the benefit is plausible but a required capability or negative
@@ -435,16 +451,16 @@ Decision:
 - **reject/retire** when the adapter bypasses the Control Kernel, leaks config or
   credentials, cannot reconcile uncertain effects, duplicates an owner, or has no
   meaningful advantage over PTY;
-- a production OpenCode adapter remains Apex V1 work. An Aelyris Runtime TUI is a
+- a production adapter remains conditional Apex V1 work. An Aelyris Runtime TUI is a
   separate value hypothesis after the adapter and daemon projection are proven;
   it is not bundled into V1-R0 or allowed to replace the Tauri cockpit by default.
 
-Primary capability sources for the experiment are the OpenCode
+Candidate documentation and schemas are discovery input, not proof that a pinned
+local version behaves correctly. When OpenCode is voluntarily admitted, its
 [server/OpenAPI/SSE contract](https://opencode.ai/docs/server/),
 [ACP subprocess contract](https://opencode.ai/docs/acp/), and
-[configuration precedence contract](https://opencode.ai/docs/config/). Current
-documentation is discovery input, not proof that a pinned local version behaves
-correctly.
+[configuration precedence contract](https://opencode.ai/docs/config/) may be used
+under the same candidate-neutral rules.
 
 #### V1-R1 — Structured State Authority And Explainability
 
@@ -684,7 +700,7 @@ Unlocks:
 | pane control baton + semantic command evidence | high | high | runtime/input authority | A7 Core bounded path |
 | capability kernel | low-visible, critical | highest | governance inventory | A7 Core bounded path |
 | Mission Rehearsal | high | high | WorkGraph/proof/capability catalog | A7 Core |
-| OpenCode structured-adapter comparison | high if portability proof wins; low if it is only another provider integration | high only with one governed identity across runtimes | A7 adapter contract + A9 release baseline | Apex V1-R0 |
+| Structured-runtime candidate comparison | high only if an admitted candidate materially beats PTY; zero when `promote_none` retains Current Best | high only with one governed identity across runtimes | A7 adapter contract + A9 release baseline | Apex V1-R0 |
 | Universal Agent Fabric expansion | very high | high | A7 adapter/capability contract | Apex V1 |
 | Mission Time Machine | very high | high | Chronicle convergence | Apex V2 |
 | Verified Skill Foundry | very high | highest | packets/evals/existing Proofbook ledger | Apex V4 |

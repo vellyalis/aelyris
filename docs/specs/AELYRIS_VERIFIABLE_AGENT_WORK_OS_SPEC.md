@@ -235,6 +235,12 @@ reject, tool-event stream, diff stream, usage/cost, attention state, and session
 export. Unsupported capabilities are explicitly `unsupported`; Aelyris must not
 infer success or synthesize a capability from terminal text.
 
+Visible PTY is the adapter `Current Best`. Apex V1 does not require OpenCode or
+any other named runtime. A structured candidate is admitted only when a bounded
+receipt identifies a material expected advantage, authority/configuration
+boundaries, and a reversible retirement path. `V1-R0=promote_none` is a valid
+successful result and opens no production adapter or later V1 slice.
+
 Protocol responsibilities remain separate:
 
 - PTY owns human-visible interactive execution;
@@ -688,7 +694,7 @@ The following weaken the product and are explicitly out of contract:
 - a Result Capsule, message acknowledgement, or generic chat transcript treated
   as completion, decision, obligation fulfillment, or verified memory;
 - arbitrary JavaScript action execution, a fixed 11-agent topology, or a
-  pre-A9 production OpenCode/Runtime-TUI path;
+  pre-A9 production structured-runtime-adapter/Runtime-TUI path;
 - provider-specific SDK concepts in the core ontology;
 - using MCP as event bus, agent protocol, or second runtime;
 - frontend-owned workflow, progress, Proofbook, or completion state;

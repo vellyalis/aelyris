@@ -329,9 +329,9 @@ const requiredDesignClauses = [
   "A7.5 Canonical Core Mission Combined Acceptance",
   "RPO=0",
   "Apex Design Gates",
-  "OpenCode Candidate Adapter Research Contract",
-  "OC-R0-10",
-  "verify:opencode-adapter-candidate",
+  "Structured Runtime Candidate Research Contract",
+  "SR-R0-10",
+  "verify:structured-runtime-candidate",
   "TeamExecutionPolicy",
   "completion barrier is this packet validation plus compare-and-swap settlement",
   "capability-scoped tool discovery",
@@ -366,8 +366,9 @@ const requiredRoadmapClauses = [
   "A8.1 And A9 Remain Release Gates; A8.0 Decision Is Complete",
   "This stable roadmap does not copy the exact current phase or slice",
   "Apex V1 — Universal Agent Fabric Expansion",
-  "V1-R0 — OpenCode Candidate Adapter Comparison",
+  "V1-R0 — Structured Runtime Candidate Comparison",
   "proof-carrying runtime portability",
+  "promote_none",
   "does not alter the active",
   "Apex V2 — Mission Time Machine",
   "Apex V3 — Qralis Coordination Fabric",
@@ -395,7 +396,7 @@ const requiredIndexClauses = [
   "[AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md)",
   "Verifiable Agent Work OS",
   "V1-R0",
-  "OpenCode",
+  "promote_none",
   "実装済みclaimではない",
 ];
 
@@ -521,8 +522,10 @@ const requiredDecisionClauses = [
   "Control Command registry/kernel",
   "not a shipped or release-ready claim",
   "ADR-012 Structured Runtimes Are Replaceable Adapters",
-  "OpenCode ACP, OpenCode HTTP/SSE",
   "cannot change the active A4/A6/A7/A8/A9 order",
+  "ADR-017 Structured Runtime Admission Is Candidate-Neutral",
+  "visible PTY remains the Universal Agent Fabric `Current Best`",
+  "`promote_none` is a successful evidence-backed outcome",
   "ADR-013 External Team Patterns Extend Existing Owners",
   "Result Capsule is only a coordination projection",
   "the active A4 runtime-integrity sequence through A4.12",
@@ -1034,14 +1037,19 @@ const activeProductIndex = activeProductSlice ? Number(activeProductSlice[1]) : 
 const nextProductIndex = nextProductSlice ? Number(nextProductSlice[1]) : Number.NaN;
 const expectedLastProductSlice =
   activeProductIndex === 0 ? "none" : `GMV-${activeProductIndex - 1}`;
+const productClaimConfirmationPhase =
+  productFrontier.phase === "GMV CLAIM CONFIRMATION" && activeProductIndex === 3;
+const productLastCompletedValid = productClaimConfirmationPhase
+  ? productFrontier.lastCompletedSlice === "GMV-2" || /^AIO-\d+$/.test(productFrontier.lastCompletedSlice ?? "")
+  : productFrontier.lastCompletedSlice === expectedLastProductSlice;
 const productDeliveryFrontierValid =
   productFrontier.status === "ACTIVE" &&
-  productFrontier.phase === "GMV" &&
+  (productFrontier.phase === "GMV" || productClaimConfirmationPhase) &&
   Number.isInteger(activeProductIndex) &&
   activeProductIndex >= 0 &&
   activeProductIndex <= 3 &&
   nextProductIndex === activeProductIndex &&
-  productFrontier.lastCompletedSlice === expectedLastProductSlice;
+  productLastCompletedValid;
 const a7ScopeLockStillActive = currentFrontier.activeSlice === "A7.0";
 
 const dirty = dirtyPaths();
