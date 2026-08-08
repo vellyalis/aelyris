@@ -11,6 +11,7 @@ const read = (relativePath) =>
 const api = read("src-tauri/src/api/mod.rs");
 const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
 const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
+const mcpMissionCompletion = read("src-tauri/src/api/mcp/mission_completion.rs");
 const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionRunNext = read("src-tauri/src/api/mcp/mission_run_next.rs");
@@ -23,6 +24,7 @@ const apiMcp = [
   mcpCatalog,
   read("src-tauri/src/api/mcp/dispatch.rs"),
   mcpOrchestratorStep,
+  mcpMissionCompletion,
   mcpMissionContinuity,
   mcpMissionPlanning,
   mcpMissionRunNext,
@@ -59,6 +61,11 @@ const orchestratorStepCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.orchestrator.step"',
   '"name": "aelyris.event.recent"',
+);
+const missionCompletionCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.completion"',
+  '"name": "aelyris.mission.current"',
 );
 const missionContinuityCatalog = sliceBetween(
   mcpCatalog,
@@ -103,6 +110,7 @@ const requiredTools = [
   "aelyris.task.transition",
   "aelyris.orchestrator.plan",
   "aelyris.orchestrator.step",
+  "aelyris.mission.completion",
   "aelyris.mission.current",
   "aelyris.mission.plan",
   "aelyris.mission.run_next",
@@ -248,6 +256,36 @@ const checks = [
       lib.includes("Arc::new(task::TaskManager::new_durable())"),
     detail:
       "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
+  },
+  {
+    id: "mcp-mission-completion-is-packet-backed-restart-safe-and-read-only",
+    ok:
+      apiMcp.includes('"aelyris.mission.completion"') &&
+      missionCompletionCatalog.includes('"required": ["repoPath"]') &&
+      missionCompletionCatalog.includes('"additionalProperties": false') &&
+      missionCompletionCatalog.includes('"accessMode": "observe-only"') &&
+      missionCompletionCatalog.includes('"readOnly": true') &&
+      !missionCompletionCatalog.includes('"missionId"') &&
+      !missionCompletionCatalog.includes('"taskId"') &&
+      !missionCompletionCatalog.includes('"workPacketId"') &&
+      !missionCompletionCatalog.includes('"missionCompletionPacketId"') &&
+      !missionCompletionCatalog.includes('"oid"') &&
+      !missionCompletionCatalog.includes('"settle"') &&
+      mcpMissionCompletion.includes("super::mission_continuity::load_current(") &&
+      mcpMissionCompletion.includes("completed_work_packets_for_plan(") &&
+      mcpMissionCompletion.includes("cockpit_mission_completion_packet(") &&
+      mcpMissionCompletion.includes("packet.validate().map_err(map_plan_error)?") &&
+      mcpMissionCompletion.includes("mission_packet.validate().map_err(map_plan_error)?") &&
+      mcpMissionCompletion.includes('"settlementReplayed": false') &&
+      mcpMissionCompletion.includes('"reviewerInvoked": false') &&
+      mcpMissionCompletion.includes('"mergeInvoked": false') &&
+      mcpMissionCompletion.includes('"eventAckInvoked": false') &&
+      mcpMissionCompletion.includes('"gitMutated": false') &&
+      mcpMissionCompletion.includes('"packetContentsExposed": false') &&
+      taskManager.includes("pub fn completed_work_packets_for_plan(") &&
+      taskManager.includes("pub fn cockpit_mission_completion_packet("),
+    detail:
+      "mission.completion accepts only repository identity, reads validated immutable WorkPacket and aggregate MissionCompletionPacket references from the existing TaskManager/SQLite settlement owner, returns a stable restart-safe receipt, and performs no replay or effect",
   },
   {
     id: "mcp-mission-current-is-value-minimized-and-restart-safe",

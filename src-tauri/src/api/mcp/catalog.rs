@@ -1122,6 +1122,22 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.completion",
+        "description": "Read the restart-safe immutable completion receipt for the exact current accepted cockpit Mission. The authenticated caller supplies only repoPath. The existing SQLite-backed TaskManager and settlement packets remain the sole owners; this read never invokes a planner, reviewer, merge, settlement replay, Event ACK, or Git mutation. Returns not_found, pending, blocked, or completed. Completed requires packet-backed Done for every declared task, one exact WorkPacket reference per task, the aggregate MissionCompletionPacket, and a stable receipt digest. It never returns raw Goal/context, repository/worktree paths, task identities/descriptions, branches/models/symbols, OIDs, event history, review/evidence, or packet contents.",
+        "safety": "FREE",
+        "accessMode": "observe-only",
+        "outputSensitivity": "value-minimized-coordination",
+        "readOnly": true,
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath"],
+            "properties": {
+                "repoPath": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.mission.current",
         "description": "Read the exact current accepted cockpit Mission and value-minimized TaskGraph coordination state for one repository after reconnect or restart. The authenticated caller supplies only repoPath and cannot shape Mission, plan, task, status, branch, model, packet, limit, or cursor identity. The existing SQLite-backed TaskManager remains the sole owner. Returns exact Mission/plan ids and revisions plus bounded task ids/statuses and status counts, but never raw Goal/request, repository path, planner prompt/response, task descriptions, dependency values, output paths, branch names, model assignments, symbol values, or packet contents. A repository with no accepted cockpit Mission returns an explicit structured not_found outcome rather than a synthetic empty Mission.",
         "safety": "FREE",

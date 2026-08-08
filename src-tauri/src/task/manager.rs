@@ -801,6 +801,34 @@ impl TaskManager {
         db.try_with(|database| TaskRepo::load_mission_activations(database, plan_id, plan_revision))
     }
 
+    /// Read the immutable task-level completion packets for one durable Mission plan.
+    /// This is a projection of the existing SQLite settlement owner; it does not
+    /// settle, reconcile, mint, or mutate any packet or TaskGraph state.
+    pub fn completed_work_packets_for_plan(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<Vec<CompletedWorkPacket>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| {
+            TaskRepo::load_completed_work_packets_for_plan(database, plan_id, plan_revision)
+        })
+    }
+
+    /// Read the one immutable aggregate completion packet for a durable cockpit
+    /// Mission, when aggregate settlement has already completed. Absence is not a
+    /// mutation request and never causes packet creation or settlement replay.
+    pub fn cockpit_mission_completion_packet(
+        &self,
+        plan_id: &str,
+        plan_revision: u64,
+    ) -> Result<Option<MissionCompletionPacket>, MissionPlanError> {
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| {
+            TaskRepo::load_cockpit_mission_completion(database, plan_id, plan_revision)
+        })
+    }
+
     pub fn mission_gate_evidence(
         &self,
         activation_id: &str,

@@ -69,7 +69,7 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_DETAILED_DESIGN.md) | architecture / detailed design | 既存 owner を拡張する bounded context、Mission/WorkEvent/capability/evidence/packet/learning schemas、state machine、atomicity/reconciliation、failure semantics、A7 Core vertical、Apex gatesを定義。`V1-R0`はvisible PTYをCurrent Bestとしてadmission済みstructured-runtime候補だけを同条件比較し、`promote_none`を許可しつつsecond TaskGraph/journal/runner/dispatcherを禁止 |
 | [AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md](./AELYRIS_CONTROL_API_MCP_ULTRA_DESIGN.md) | security-critical cross-face detailed design | Tauri IPC/MCP/REST/WS/CLI/PTY/Proofbook/review/merge を一つの Rust-authoritative command registry/kernel に閉じる target contract。principal/capability、schema/version、idempotency/cancellation/backpressure、evidence、migration、bypass inventory、adversarial gates を所有し、実装済みclaimではない |
 | [AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md](./AELYRIS_VERIFIABLE_AGENT_WORK_OS_ROADMAP_2026-07-13.md) | tracked product roadmap | 常時 Now/Next/Unlocks、A6.2v1設計checkpoint、request→plan preview→visible implementation→fresh tests→independent review→exact-OID settlement→immutable packet に限定した有限なA7 Core Mission、A8/A9 release gates、deferred product work、post-A9 Apex V1-V9を分離。Apex V1-R0はadapter中立で、admission済み候補がPTYを実証的に上回る場合だけ1経路を昇格し、候補なし／優位性なしなら`promote_none`でPTYを維持 |
-| [../../product-delivery-instructions.md](../../product-delivery-instructions.md) | **active product-delivery work order / AIO-49** | GMV-0..3とAIO-44..48でMCP Goal→current Mission→visible PTY実装→current-Mission-scoped review→exact-OID settlementを既存ownerへ接続済み。次は同じSQLite packet authorityからrestart-safe completion receiptをread-only取得する |
+| [../../product-delivery-instructions.md](../../product-delivery-instructions.md) | **active product-delivery work order / AIO-50** | GMV-0..3とAIO-44..49でMCP Goal→current Mission→visible PTY実装→current-Mission-scoped review→exact-OID settlement→restart-safe completion receiptを既存ownerへ接続済み。次は同じdurable Mission ownerからbounded prior/current historyをpayload-free取得する |
 | [../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md](../WORK_RECORD_AND_CONTINUATION_PROTOCOL.md) | cross-cutting workflow contract | tracked plan + ignored per-session worklog + canonical local-only handoff の三層で、session close と `続き` の再開手順、必須記録、clear-safe 条件を固定 |
 | [AELYRIS_REMOTE_CONTINUITY_SPEC.md](./AELYRIS_REMOTE_CONTINUITY_SPEC.md) | D2R / remote continuity requirements | 外出先からの tab/pane state sync、read-only remote fleet monitor、fingerprint-checked remote approval、SSH attach、attach lease、scoped principal、not release-ready claim boundary を定義する仕様書 |
 | [AELYRIS_REMOTE_CONTINUITY_DESIGN.md](./AELYRIS_REMOTE_CONTINUITY_DESIGN.md) | D2R / remote architecture design | daemon-owned state projection、remote event stream、private-network web monitor、SSH/TUI attach、attach leases、principal/scope model の設計。SSH は state owner ではなく transport として扱う |
@@ -96,8 +96,8 @@ gated design であり、現在の製品完成主張ではない。危険シェ�
 `A9.6r1` repo repairは`f72a61b3`／Required fast CI run `30876300708`で完了した。
 `audit-remediation-instructions.md` はoperator/external certification-onlyとなり、
 releaseReady=falseを維持するがrepo mutationを所有しない。現在のexact repo frontierは
-root `product-delivery-instructions.md` のactive `AIO-49`であり、GMV-0..3とAIO-44..48を
-completed foundationとしてpacket-backed Mission completion readbackを閉じるsole repo-mutating
+root `product-delivery-instructions.md` のactive `AIO-50`であり、GMV-0..3とAIO-44..49を
+completed foundationとしてbounded Mission history readbackを閉じるsole repo-mutating
 product work orderである。full-native Rust migration は accepted-with-amendments の
 strategic program だが、ADR-015 の product-delivery／measured-necessity gate 前には
 activationしない。A8.1 measured terminal disposition は `do_not_promote` で完了し、

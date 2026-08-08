@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-49`.
-LAST COMPLETED SLICE: `AIO-48`.
-NEXT IMPLEMENTATION SLICE: `AIO-49`.
+ACTIVE SLICE: `AIO-50`.
+LAST COMPLETED SLICE: `AIO-49`.
+NEXT IMPLEMENTATION SLICE: `AIO-50`.
 
 ```yaml
 continuation_contract:
@@ -62,7 +62,8 @@ Current portfolio classification:
 | MCP value-minimized Mission continuity | **COMPLETE** | A reconnecting AI supplies only repository identity and recovers the exact accepted Mission/plan plus bounded TaskGraph status from the existing SQLite-backed TaskManager, with structured absence and no raw planning values |
 | MCP backend-owned visible Mission run-next | **COMPLETE** | Authenticated MCP now reuses the existing visible cockpit PaneFleet step, derives exact agent/runtime admission in the backend, fails closed for configured unowned token/cost telemetry, and stops at Review |
 | MCP current-Mission-scoped review settlement | **COMPLETE** | Exact current-Mission membership, TaskGraph Review status, and durable activation lineage are revalidated before reviewer, candidate, merge, or Git effects; generic/stale/mixed scope fails closed and every merge requires immutable WorkPacket settlement |
-| MCP durable Mission completion receipt | **ACTIVE / AIO-49** | A reconnecting AI still needs one restart-safe packet-backed completion read without replaying settlement or retaining the prior mutation response |
+| MCP durable Mission completion receipt | **COMPLETE** | A reconnecting AI reads the current Mission's validated WorkPacket set, aggregate MissionCompletionPacket, exact immutable references, and stable receipt digest from the existing SQLite owner without replaying settlement |
+| MCP bounded Mission history | **ACTIVE / AIO-50** | An authenticated AI can recover only the current Mission; it still needs bounded prior/current Mission discovery without retaining earlier responses or exposing Goal/task payloads |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -2011,7 +2012,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` restart-safe readback of immutable completion
 for the current accepted cockpit Mission without replaying settlement.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one read-only MCP operation accepting only `repoPath`. Resolve the current
   accepted Mission through the existing TaskManager/SQLite owner and derive its exact
@@ -2032,6 +2033,53 @@ Status: **ACTIVE**.
 - Done when an authenticated AI can restart Aelyris on the same SQLite authority and
   recover the exact immutable completion receipt twice with no settlement replay,
   while pending, absent, and inconsistent states remain typed non-completion.
+
+- Done: `aelyris.mission.completion` accepts only `repoPath`, resolves the exact current
+  accepted Mission through the existing SQLite-backed TaskManager, and returns
+  `not_found`, `pending`, `blocked`, or packet-backed `completed`. A `Done` TaskGraph
+  without the exact validated WorkPacket set and aggregate MissionCompletionPacket is
+  a typed `mission_completion_inconsistent` non-success.
+- Done: completed projection returns exact WorkPacket references,
+  MissionCompletionPacket reference, and one stable domain-separated receipt digest;
+  it excludes Goal/context, paths, task identities/descriptions, branches/models/
+  symbols, OIDs, event history, review/evidence, and packet contents.
+- Done: focused completion owner tests passed `6 / 6`; `cargo check --lib`, MCP owner,
+  and `verify:fast` passed. Existing unrelated pending-push dead-code warnings remain
+  outside the slice.
+- Done: live reads on the completed AIO-48 Mission returned WorkPacket
+  `019fe065-af6d-7e53-9b5f-df4df5371490`, MissionCompletionPacket
+  `019fe065-af6e-7153-ba85-07cee8ea2ad8`, and receipt digest
+  `570ff4f7a536e872978af4fb9d0b903c83f2a584f25518ce34be551eb2227770`.
+  Two reads and a same-SQLite restart returned exact identity, packet references,
+  digest, and target main `30717daa769fd85a61ac34bdd67cf4b26290819d` with no
+  settlement replay, reviewer, merge, Event ACK, Git mutation, or worktree recreation.
+
+### AIO-50 — MCP Bounded Mission History
+
+Capability target: `Product-Accessible` restart-safe discovery of prior and current
+accepted cockpit Missions for one repository without Goal or task-payload exposure.
+Status: **ACTIVE**.
+
+- Add one read-only MCP operation accepting `repoPath` and an optional server-clamped
+  finite `limit`. Canonicalize repository identity through the existing Mission owner
+  and list durable cockpit Mission plans belonging to that exact repository. Do not add
+  a history cache, search index, journal, packet mirror, or second persistence owner.
+- Return stable newest-first Mission/plan identity and revision, accepted/current flag,
+  bounded task count/status summary when the exact current TaskGraph projection applies,
+  and packet-backed completion presence/reference digest when already available. Prior
+  rows must not inherit the current TaskGraph status or current packet receipt.
+- Preserve exact distinction among accepted/current, completed, rejected/cancelled, and
+  incomplete history. A plan row, `Done` label, output file, stale event, or previous MCP
+  response cannot become completed history without the same immutable packet contract
+  used by AIO-49.
+- Do not return Goal/context, repository paths, planner payloads, task identities or
+  descriptions, dependency/output/branch/model/symbol values, OIDs, raw events,
+  review/evidence, or packet contents. Audit stores Principal, repository/input digests,
+  requested/effective limits, result count, and outcome counts only.
+- Done when one repository with multiple durable Mission attempts can be restarted and
+  an authenticated AI can identify the exact latest/current entry and prior packet-
+  backed completion entries without retaining previous MCP responses or receiving
+  sensitive plan contents.
 
 ## Deferred After GMV
 
@@ -2079,9 +2127,9 @@ value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, MCP path-free worktree prediction
 `AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
 Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, backend-owned
-visible Mission run-next `AIO-47`, and current-Mission-scoped review settlement
-`AIO-48` are also complete. `GMV-3` is Claim-Eligible; durable Mission completion
-receipt `AIO-49` is the active frontier.
+visible Mission run-next `AIO-47`, current-Mission-scoped review settlement `AIO-48`,
+and durable Mission completion receipt `AIO-49` are also complete. `GMV-3` is
+Claim-Eligible; bounded Mission history `AIO-50` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

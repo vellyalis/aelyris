@@ -4465,6 +4465,7 @@ pub(super) async fn dispatch_authorized(
             serde_json::json!({ "health": health })
         }
         "aelyris.orchestrator.step" => super::orchestrator_step::execute(&state, actor, &args)?,
+        "aelyris.mission.completion" => super::mission_completion::execute(&state, actor, &args)?,
         "aelyris.mission.current" => super::mission_continuity::execute(&state, actor, &args)?,
         "aelyris.mission.plan" => super::mission_planning::execute(&state, actor, &args).await?,
         "aelyris.mission.run_next" => super::mission_run_next::execute(&state, actor, &args)?,
