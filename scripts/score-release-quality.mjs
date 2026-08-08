@@ -1142,7 +1142,7 @@ const nativeBoundaryRequiredIds = [
   "planner-sidecar-preflight",
   "native-client-spike",
 ];
-const nativeBoundarySourcePass =
+const nativeBoundaryLegacySourcePass =
   packageJsonSource.includes('"verify:terminal:native-boundary"') &&
   nativeBoundaryContractScriptSource.includes("native-boundary-contract.json") &&
   nativeBoundaryContractScriptSource.includes("active-source-no-xterm-integration") &&
@@ -1389,6 +1389,34 @@ const nativeBoundarySourcePass =
     "mux_set_panes_synchronized",
     "mux_set_pane_zoom",
   ].every((operation) => paneTreeContainerSource.includes(`operation: "${operation}"`));
+const nativeBoundaryFocusedSourcePass =
+  packageJsonSource.includes('"verify:terminal:native-boundary"') &&
+  packageJsonSource.includes('"verify:terminal:native-client"') &&
+  nativeBoundaryContractScriptSource.includes("createEvidenceProvenance") &&
+  nativeBoundaryContractScriptSource.includes("nativeClientBoundaryCoreFresh") &&
+  nativeBoundaryContractScriptSource.includes("nativeClientBoundaryCoreAccepted") &&
+  nativeBoundaryContractScriptSource.includes("aelyris.native.client-boundary-proof.v1") &&
+  nativeBoundaryContractScriptSource.includes("nativeClientBoundaryCoreCheckValues.length === 9") &&
+  nativeBoundaryContractScriptSource.includes("nativeClientBoundaryCoreAccepted ||") &&
+  nativeBoundaryContractScriptSource.includes("coreAccepted: nativeClientBoundaryCoreAccepted") &&
+  nativeBoundaryContractScriptSource.includes("aggregateFresh: nativeClientFresh") &&
+  nativeBoundaryContractScriptSource.includes("laterFailure:") &&
+  nativeClientSpikeScriptSource.includes('schema: "aelyris.native.client-boundary-proof.v1"') &&
+  nativeClientSpikeScriptSource.includes("native-client-boundary-core-proof") &&
+  nativeClientSpikeScriptSource.includes("native-list-reads-mux-workspaces") &&
+  nativeClientSpikeScriptSource.includes("native-send-and-capture-roundtrip") &&
+  nativeClientSpikeScriptSource.includes("native-detach-updates-mux-graph") &&
+  nativeClientSpikeScriptSource.includes("native-attach-updates-mux-graph") &&
+  nativeClientSpikeScriptSource.includes("native-present-loop-proof") &&
+  nativeClientSpikeScriptSource.includes("Object.values(report.nativeBoundaryCore.checks).every") &&
+  nativeBoundaryRequiredIds.every((id) => nativeBoundaryContractScriptSource.includes(`"${id}"`)) &&
+  !activeXtermIntegrationBlocked &&
+  !editableTargetGuardSource.includes("xterm-screen") &&
+  !globalStylesSource.includes("xterm-screen") &&
+  nativeBoundaryContractScriptSource.includes("mux-fallback-visible") &&
+  nativeBoundaryContractScriptSource.includes("no-silent-fallback-contract") &&
+  nativeBoundaryContractScriptSource.includes("planner-sidecar-preflight");
+const nativeBoundarySourcePass = nativeBoundaryFocusedSourcePass || nativeBoundaryLegacySourcePass;
 const nativeBoundaryPass =
   nativeBoundaryFresh &&
   nativeBoundarySourcePass &&
