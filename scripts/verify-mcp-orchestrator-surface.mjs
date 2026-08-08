@@ -262,7 +262,9 @@ const checks = [
       !missionContinuityCatalog.includes('"limit"') &&
       !missionContinuityCatalog.includes('"cursor"') &&
       mcpMissionContinuity.includes("current_cockpit_mission(repo_path)") &&
-      mcpMissionContinuity.includes("found_projection(mission, tasks.list())") &&
+      mcpMissionContinuity.includes("validate_current_snapshot(mission, tasks.list())") &&
+      mcpMissionContinuity.includes("pub(super) fn load_current(") &&
+      mcpMissionContinuity.includes("Some(snapshot) => Ok(found_projection(snapshot))") &&
       mcpMissionContinuity.includes('"outcome": "not_found"') &&
       mcpMissionContinuity.includes('"syntheticMissionCreated": false') &&
       mcpMissionContinuity.includes('"volatileEventCacheUsed": false') &&
@@ -421,7 +423,7 @@ const checks = [
       "MCP orchestrator.step exposes no reviewerId/gates/gateCommands; project gates and semantic review run only inside backend-owned exact-candidate review",
   },
   {
-    id: "mcp-mission-review-settlement-is-caller-unshaped",
+    id: "mcp-mission-review-settlement-is-current-scoped-and-caller-unshaped",
     ok:
       apiMcp.includes('"aelyris.mission.review_and_settle"') &&
       missionReviewSettlementCatalog.includes(
@@ -433,9 +435,21 @@ const checks = [
       !missionReviewSettlementCatalog.includes('"candidateSourceOid"') &&
       !missionReviewSettlementCatalog.includes('"mergeToken"') &&
       !missionReviewSettlementCatalog.includes('"workPacket"') &&
+      missionReviewSettlementCatalog.includes(
+        "exact current-Mission membership",
+      ) &&
+      missionReviewSettlementCatalog.includes("TaskGraph Review status") &&
+      missionReviewSettlementCatalog.includes("matching durable Mission/plan/WorkUnit activation lineage") &&
+      missionReviewSettlementCatalog.includes("generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed") &&
       mcpMissionReviewSettlement.includes(
         "crate::ipc::orchestrator_review_and_merge(",
       ) &&
+      mcpMissionReviewSettlement.includes("preflight_current_mission_review(") &&
+      mcpMissionReviewSettlement.includes("mission_activation_for_task(task_id)") &&
+      mcpMissionReviewSettlement.includes("current_mission_activation_lineage_mismatch") &&
+      mcpMissionReviewSettlement.includes("settlement_outcome(") &&
+      mcpMissionReviewSettlement.includes("currentMissionPreflightPassed") &&
+      !mcpMissionReviewSettlement.includes("merged_without_mission_settlement") &&
       mcpMissionReviewSettlement.includes('"callerSuppliedVerdict": false') &&
       mcpMissionReviewSettlement.includes(
         '"callerSuppliedCandidateOid": false',
@@ -448,7 +462,7 @@ const checks = [
       ) &&
       mcpMissionReviewSettlement.includes('"callerSuppliedPacket": false'),
     detail:
-      "mission.review_and_settle accepts only repository/task identity and delegates fixed review, exact-OID merge, and packet settlement to existing backend owners",
+      "mission.review_and_settle accepts only repository/task identity, proves exact current-Mission Review membership and activation lineage before effects, rejects generic/stale/mixed scope, and delegates fixed review, exact-OID merge, and WorkPacket/Mission completion settlement to existing backend owners",
   },
   {
     id: "mcp-orchestrator-enforces-disjoint-lanes",

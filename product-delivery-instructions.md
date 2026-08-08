@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-48`.
-LAST COMPLETED SLICE: `AIO-47`.
-NEXT IMPLEMENTATION SLICE: `AIO-48`.
+ACTIVE SLICE: `AIO-49`.
+LAST COMPLETED SLICE: `AIO-48`.
+NEXT IMPLEMENTATION SLICE: `AIO-49`.
 
 ```yaml
 continuation_contract:
@@ -61,7 +61,8 @@ Current portfolio classification:
 | MCP backend-owned Mission planning | **COMPLETE** | Authenticated AI supplies only repository, Goal, and bounded context; the backend default real-Codex planner atomically accepts the Mission/TaskGraph and restores it from the same SQLite authority |
 | MCP value-minimized Mission continuity | **COMPLETE** | A reconnecting AI supplies only repository identity and recovers the exact accepted Mission/plan plus bounded TaskGraph status from the existing SQLite-backed TaskManager, with structured absence and no raw planning values |
 | MCP backend-owned visible Mission run-next | **COMPLETE** | Authenticated MCP now reuses the existing visible cockpit PaneFleet step, derives exact agent/runtime admission in the backend, fails closed for configured unowned token/cost telemetry, and stops at Review |
-| MCP current-Mission-scoped review settlement | **ACTIVE / AIO-48** | The Mission-named settlement tool still contains a generic-task compatibility outcome (`merged_without_mission_settlement`); it must refuse non-current-Mission tasks before reviewer, candidate, or merge effects |
+| MCP current-Mission-scoped review settlement | **COMPLETE** | Exact current-Mission membership, TaskGraph Review status, and durable activation lineage are revalidated before reviewer, candidate, merge, or Git effects; generic/stale/mixed scope fails closed and every merge requires immutable WorkPacket settlement |
+| MCP durable Mission completion receipt | **ACTIVE / AIO-49** | A reconnecting AI still needs one restart-safe packet-backed completion read without replaying settlement or retaining the prior mutation response |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -1966,7 +1967,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` exact review and immutable settlement only for
 the task set owned by the current accepted cockpit Mission.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Before spawning the independent reviewer, freezing a candidate, reserving a merge,
   or mutating Git, resolve the existing `mission.current` / TaskManager authority for
@@ -1978,8 +1979,10 @@ Status: **ACTIVE**.
   reviewer, Mission cache, task index, merge path, or rollback fiction.
 - Retire the Mission MCP compatibility outcome `merged_without_mission_settlement`.
   This tool may return accepted immutable settlement, review rejection, or a typed
-  fail-closed error; a successful merge without WorkPacket/MissionCompletionPacket is
-  an invariant failure, never a successful Mission outcome.
+  fail-closed error. Every successful merge requires task-level WorkPacket settlement;
+  MissionCompletionPacket is additionally required only when aggregate Mission
+  completion is due. A generic merge without Mission-owned settlement is an invariant
+  failure, never a successful Mission outcome.
 - Preserve caller-unshaped authority and current value minimization. The caller still
   supplies only `repoPath` and `taskId`, and audit still excludes task/path/OID/review/
   packet values while recording whether current-Mission preflight passed.
@@ -1987,6 +1990,48 @@ Status: **ACTIVE**.
   unrelated/stale Mission task is rejected before mutation, and an exact current
   Mission Review task continues to complete through the existing reviewer, exact-OID
   merge, immutable packets, durable completion event, and cleanup.
+
+- Done: focused owner tests reject a generic Review task before any attached reviewer
+  runtime, reject mixed TaskGraph scope, require exact current-Mission membership plus
+  `Review` status and matching durable activation lineage, and treat every
+  merged-without-WorkPacket state as an invariant failure. The focused lane passed
+  `7 / 7`.
+- Done: the negative live proof returned `current_mission_not_found` with
+  `currentMissionPreflightPassed:false`; no reviewer process, durable review row,
+  MergeIntent row, Git change, or worktree change occurred.
+- Done: the positive live proof accepted current Mission
+  `019fe063-fee3-7523-a00f-638599bcafb1` / plan
+  `019fe063-fee3-7523-a00f-639dedb360d0`, reviewed exact candidate
+  `30717daa769fd85a61ac34bdd67cf4b26290819d`, merged the exact OID, issued
+  WorkPacket `019fe065-af6d-7e53-9b5f-df4df5371490` and MissionCompletionPacket
+  `019fe065-af6e-7153-ba85-07cee8ea2ad8`, reached packet-backed `Done`, and reclaimed
+  the worktree. Audit retained no raw path, task, OID, review, or packet values.
+
+### AIO-49 — MCP Durable Mission Completion Receipt
+
+Capability target: `Product-Accessible` restart-safe readback of immutable completion
+for the current accepted cockpit Mission without replaying settlement.
+Status: **ACTIVE**.
+
+- Add one read-only MCP operation accepting only `repoPath`. Resolve the current
+  accepted Mission through the existing TaskManager/SQLite owner and derive its exact
+  declared task set from the durable cockpit plan. Do not add a receipt cache, event
+  mirror, history index, packet store, or second completion owner.
+- Return `not_found`, `pending`, `blocked`, `completed`, or a typed fail-closed
+  inconsistency. `completed` requires every declared task to be packet-backed `Done`,
+  an exact CompletedWorkPacket reference for each task, and the one durable
+  MissionCompletionPacket for aggregate Mission completion. A task label, file,
+  self-report, stale event, or prior MCP response is never completion truth.
+- Preserve exact Mission/plan identity and the immutable packet references or one
+  stable receipt digest needed for continuation. Do not return Goal/context,
+  repository/worktree paths, task descriptions, branches/models/symbols, OIDs, raw
+  review/evidence, event history, or packet contents.
+- The read performs no planner, TaskGraph, reviewer, merge, settlement, event ACK, or
+  Git mutation. Audit stores Principal, one-way repository/input digests, outcome,
+  aggregate task/packet counts, and presence flags only.
+- Done when an authenticated AI can restart Aelyris on the same SQLite authority and
+  recover the exact immutable completion receipt twice with no settlement replay,
+  while pending, absent, and inconsistent states remain typed non-completion.
 
 ## Deferred After GMV
 
@@ -2033,9 +2078,10 @@ also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
 value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, MCP path-free worktree prediction
 `AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
-Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, and backend-
-owned visible Mission run-next `AIO-47` are also complete. `GMV-3` is Claim-Eligible;
-current-Mission-scoped review settlement `AIO-48` is the active frontier.
+Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, backend-owned
+visible Mission run-next `AIO-47`, and current-Mission-scoped review settlement
+`AIO-48` are also complete. `GMV-3` is Claim-Eligible; durable Mission completion
+receipt `AIO-49` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

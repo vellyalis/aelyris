@@ -193,7 +193,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For a task already in Review, call mission.review_and_settle with only {repoPath, taskId}. The backend freezes and revalidates the candidate, runs the fixed independent reviewer, consumes the exact-OID merge authority, and mints settlement packets. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For an exact current-Mission task already in Review, call mission.review_and_settle with only {repoPath, taskId}. Before any reviewer, candidate-freeze, or merge effect, the backend revalidates current accepted Mission membership, TaskGraph Review status, and durable activation lineage; generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed. The fixed independent reviewer then consumes the exact-OID merge authority and mints immutable WorkPacket settlement, plus MissionCompletionPacket when aggregate completion is due. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
 
 fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
@@ -3848,6 +3848,8 @@ mod tests {
             "backend-owned",
             "fixed independent reviewer",
             "exact-OID",
+            "current-Mission membership",
+            "TaskGraph Review status",
             "cannot supply a verdict",
             "WorkPacket",
             "MissionCompletionPacket",
@@ -3880,7 +3882,7 @@ mod tests {
                 },
             )),
             Err(ApiError::Internal(message))
-                if message.contains("runtime is not attached")
+                if message.contains("task graph is not attached")
         ));
 
         let rows = db
@@ -3902,6 +3904,10 @@ mod tests {
         assert_eq!(
             row.redacted_payload_json["rejectionCode"],
             "runtime_owner_unavailable"
+        );
+        assert_eq!(
+            row.redacted_payload_json["currentMissionPreflightPassed"],
+            false
         );
         for field in ["repositoryDigest", "taskDigest", "inputDigest"] {
             let digest = row.redacted_payload_json[field]

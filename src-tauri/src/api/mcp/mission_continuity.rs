@@ -90,10 +90,16 @@ fn not_found_projection() -> serde_json::Value {
     })
 }
 
-fn found_projection(
+#[derive(Debug, Clone)]
+pub(super) struct CurrentMissionSnapshot {
+    pub mission: crate::task::MissionPlanPreview,
+    pub tasks: Vec<crate::task::Task>,
+}
+
+fn validate_current_snapshot(
     mission: crate::task::MissionPlanPreview,
     task_snapshot: Vec<crate::task::Task>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<CurrentMissionSnapshot> {
     if mission.status != crate::task::MissionPlanStatus::Accepted {
         return Err(ApiError::Conflict(
             "current cockpit Mission projection is not accepted".to_string(),
@@ -111,8 +117,7 @@ fn found_projection(
             "current TaskGraph contains tasks outside the accepted cockpit Mission".to_string(),
         ));
     }
-    let mut tasks = Vec::with_capacity(planned.len());
-    let mut status_counts = BTreeMap::<String, usize>::new();
+    let mut ordered_tasks = Vec::with_capacity(planned.len());
     for identity in planned {
         let task = tasks_by_id.get(&identity.id).ok_or_else(|| {
             ApiError::Conflict(format!(
@@ -120,15 +125,31 @@ fn found_projection(
                 identity.id
             ))
         })?;
-        let status = task.status.as_str().to_string();
-        *status_counts.entry(status.clone()).or_default() += 1;
-        tasks.push(serde_json::json!({
-            "id": task.id,
-            "status": status,
-        }));
+        ordered_tasks.push(task.clone());
     }
 
-    Ok(serde_json::json!({
+    Ok(CurrentMissionSnapshot {
+        mission,
+        tasks: ordered_tasks,
+    })
+}
+
+fn found_projection(snapshot: CurrentMissionSnapshot) -> serde_json::Value {
+    let CurrentMissionSnapshot { mission, tasks } = snapshot;
+    let mut status_counts = BTreeMap::<String, usize>::new();
+    let task_projection = tasks
+        .iter()
+        .map(|task| {
+            let status = task.status.as_str().to_string();
+            *status_counts.entry(status.clone()).or_default() += 1;
+            serde_json::json!({
+                "id": task.id,
+                "status": status,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    serde_json::json!({
         "outcome": "found",
         "found": true,
         "mission": {
@@ -139,9 +160,9 @@ fn found_projection(
             "status": mission.status.as_str(),
         },
         "taskGraph": {
-            "taskCount": tasks.len(),
+            "taskCount": task_projection.len(),
             "statusCounts": status_counts,
-            "tasks": tasks,
+            "tasks": task_projection,
             "exactTaskIdentityReturned": true,
             "valueMinimized": true,
         },
@@ -168,10 +189,13 @@ fn found_projection(
             "symbolValuesExposed": false,
             "packetContentsExposed": false,
         }
-    }))
+    })
 }
 
-pub(super) fn read_current(state: &ApiState, repo_path: &str) -> ApiResult<serde_json::Value> {
+pub(super) fn load_current(
+    state: &ApiState,
+    repo_path: &str,
+) -> ApiResult<Option<CurrentMissionSnapshot>> {
     let tasks = state.task_manager.as_ref().ok_or_else(|| {
         ApiError::Internal("task graph is not attached to this MCP process".to_string())
     })?;
@@ -179,9 +203,16 @@ pub(super) fn read_current(state: &ApiState, repo_path: &str) -> ApiResult<serde
         .current_cockpit_mission(repo_path)
         .map_err(map_current_error)?;
     let Some(mission) = mission else {
-        return Ok(not_found_projection());
+        return Ok(None);
     };
-    found_projection(mission, tasks.list())
+    validate_current_snapshot(mission, tasks.list()).map(Some)
+}
+
+pub(super) fn read_current(state: &ApiState, repo_path: &str) -> ApiResult<serde_json::Value> {
+    match load_current(state, repo_path)? {
+        Some(snapshot) => Ok(found_projection(snapshot)),
+        None => Ok(not_found_projection()),
+    }
 }
 
 pub(super) fn execute(
