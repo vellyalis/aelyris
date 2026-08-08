@@ -13,6 +13,7 @@ mod event_ack;
 mod fleet_status;
 mod mission_completion;
 mod mission_continuity;
+mod mission_history;
 mod mission_planning;
 mod mission_review_settlement;
 mod mission_run_next;
@@ -194,7 +195,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For an exact current-Mission task already in Review, call mission.review_and_settle with only {repoPath, taskId}. Before any reviewer, candidate-freeze, or merge effect, the backend revalidates current accepted Mission membership, TaskGraph Review status, and durable activation lineage; generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed. The fixed independent reviewer then consumes the exact-OID merge authority and mints immutable WorkPacket settlement, plus MissionCompletionPacket when aggregate completion is due. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) After settlement or reconnect, call mission.completion with only {repoPath}. It reads the current Mission's immutable WorkPacket set and aggregate MissionCompletionPacket from the existing SQLite-backed TaskManager, returns a stable receipt digest and exact packet references, and never replays settlement, review, merge, Event ACK, or Git effects. (5) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For an exact current-Mission task already in Review, call mission.review_and_settle with only {repoPath, taskId}. Before any reviewer, candidate-freeze, or merge effect, the backend revalidates current accepted Mission membership, TaskGraph Review status, and durable activation lineage; generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed. The fixed independent reviewer then consumes the exact-OID merge authority and mints immutable WorkPacket settlement, plus MissionCompletionPacket when aggregate completion is due. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) After settlement or reconnect, call mission.completion with only {repoPath}. It reads the current Mission's immutable WorkPacket set and aggregate MissionCompletionPacket from the existing SQLite-backed TaskManager, returns a stable receipt digest and exact packet references, and never replays settlement, review, merge, Event ACK, or Git effects. Call mission.history with {repoPath, optional limit} for a bounded newest-first list of prior/current Mission identity and packet-backed completion state; it never scans Event Bus payload history or exposes Goal/task contents. (5) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
 
 fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
@@ -323,7 +324,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 94] = [
+    const FROZEN_A64_VERBS: [&str; 95] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -376,6 +377,7 @@ mod tests {
         "aelyris.orchestrator.step",
         "aelyris.mission.completion",
         "aelyris.mission.current",
+        "aelyris.mission.history",
         "aelyris.mission.plan",
         "aelyris.mission.run_next",
         "aelyris.mission.review_and_settle",
@@ -4369,6 +4371,143 @@ mod tests {
         assert_eq!(
             schema_error["error"]["schema_violation"]["unknown"],
             serde_json::json!(["workPacketId"])
+        );
+    }
+
+    #[test]
+    fn mcp_mission_history_is_bounded_restart_safe_and_payload_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let schema =
+            input_schema_for_tool_ref("aelyris.mission.history").expect("Mission history schema");
+        assert_eq!(schema["required"], serde_json::json!(["repoPath"]));
+        assert_eq!(schema["additionalProperties"], false);
+        let properties = schema["properties"].as_object().expect("schema properties");
+        assert_eq!(
+            properties.keys().cloned().collect::<BTreeSet<_>>(),
+            ["limit".to_string(), "repoPath".to_string()]
+                .into_iter()
+                .collect()
+        );
+        assert_eq!(properties["repoPath"]["maxLength"], 4096);
+        assert_eq!(properties["limit"]["minimum"], 1);
+        assert_eq!(properties["limit"]["maximum"], 100);
+        for forbidden in [
+            "missionId",
+            "planId",
+            "taskId",
+            "workPacketId",
+            "candidateOid",
+            "eventId",
+            "afterSeq",
+            "reviewId",
+            "evidenceId",
+            "cursor",
+        ] {
+            assert!(properties.get(forbidden).is_none());
+        }
+
+        let tools = tools_list_value();
+        let tool = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.mission.history")
+            .expect("Mission history tool");
+        assert_eq!(tool["safety"], "FREE");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["readOnly"], true);
+        let description = tool["description"].as_str().unwrap();
+        for required in [
+            "bounded newest-first history",
+            "SQLite/TaskManager remains the only history owner",
+            "packet-backed completion receipt digest",
+            "never returns Goal/context",
+        ] {
+            assert!(
+                description.contains(required),
+                "description missing {required}"
+            );
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("AIO50_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+        )
+        .with_db(Some(db.clone()));
+        let repo_path = "C:/AIO50_REPOSITORY_PATH_MUST_NOT_BE_LOGGED";
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(matches!(
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "mission-history-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.history".to_string(),
+                    arguments: serde_json::json!({ "repoPath": repo_path, "limit": 5 }),
+                },
+            )),
+            Err(ApiError::Internal(message)) if message.contains("task graph is not attached")
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_mission_history_read".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read Mission history audit");
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.agent_id.as_deref(), Some("mission-history-operator"));
+        assert_eq!(row.redacted_payload_json["status"], "rejected");
+        assert_eq!(row.redacted_payload_json["effectiveLimit"], 5);
+        for flag in [
+            "repositoryPathLogged",
+            "goalOrContextLogged",
+            "missionIdentityLogged",
+            "planIdentityLogged",
+            "taskIdentityLogged",
+            "packetIdentityLogged",
+            "packetContentsLogged",
+            "oidValuesLogged",
+            "eventReviewEvidenceLogged",
+        ] {
+            assert_eq!(row.redacted_payload_json[flag], false, "flag {flag}");
+        }
+        let audit_text = serde_json::to_string(row).unwrap();
+        for hidden in [
+            repo_path,
+            "AIO50_REPOSITORY_PATH_MUST_NOT_BE_LOGGED",
+            "AIO50_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+        ] {
+            assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+        }
+
+        let Json(schema_error) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "mission-history-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.history".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path,
+                        "missionId": "caller-shaped",
+                    }),
+                },
+            ))
+            .expect("schema rejection is structured");
+        assert_eq!(schema_error["ok"], false);
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["verb"],
+            "aelyris.mission.history"
+        );
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["missionId"])
         );
     }
 

@@ -405,7 +405,7 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
 3. `audit-remediation-instructions.md` - **CERTIFICATION ONLY**. A9.6r1 repo repair
    is complete at `f72a61b3`; signing, real sleep, authenticated operator prompts, and
    external evidence remain release-blocking without repository mutation.
-4. `product-delivery-instructions.md` - **ACTIVE / AIO-50 bounded Mission history**.
+4. `product-delivery-instructions.md` - **ACTIVE / AIO-51 Mission history UI**.
    GMV-0/1 proved and exact-OID-hardened the cockpit goal-to-visible-work path;
    GMV-2 proved durable restart; GMV-3 completed the real-Codex exact-OID journey
    on 2026-08-08, including independent review, immutable packets, cleanup, and
@@ -418,16 +418,16 @@ dependency、生成artifactを変えない reversible な `Routine micro-edit` �
    visible cockpit `orchestrator_step` / PaneFleet owner with backend-derived honest
    admission facts and stops at Review. AIO-48 now proves exact current-Mission
    membership, Review status, and activation lineage before review/merge effects.
-   AIO-49 now exposes restart-safe immutable completion readback through the existing
-   TaskManager/SQLite packet authority without settlement replay. AIO-50 is the sole
-   repo-mutating frontier: expose bounded prior/current Mission discovery from existing
-   durable Mission rows without a second history cache/index/journal or payload exposure.
+   AIO-49/50 expose restart-safe packet-backed completion and bounded Mission history
+   through existing TaskManager/SQLite owners. AIO-51 is the sole repo-mutating frontier:
+   project those safe reads into one existing cockpit panel without a frontend Mission/
+   receipt store, inferred completion, new route, or sensitive payload exposure.
 5. `ui-quality-instructions.md` - scheduled work is owned by audit-remediation
    phase A3. Do not execute it as a concurrent work order.
 6. `renderer-instructions.md` - deferred to conditional audit-remediation phase
    A8. Do not reopen from the old generic route.
 現行実行順は `refactor (complete) -> hardening (complete) -> audit remediation
-R0..A9/A9.6r1 (repo complete) -> product delivery GMV-0..3/AIO-49 (complete) -> AIO-50 (active)`。A9 certification は
+R0..A9/A9.6r1 (repo complete) -> product delivery GMV-0..3/AIO-50 (complete) -> AIO-51 (active)`。A9 certification は
 release claim を BLOCK したまま operator/external lane で継続できるが、repo mutation を
 独占しない。full-native Rust migration は ADR-014 の戦略方向として保持し、ADR-015 と
 上記 migration activation gate を満たすまで自動的な next implementation program に

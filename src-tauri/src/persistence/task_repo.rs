@@ -1732,6 +1732,45 @@ impl TaskRepo {
         raws.into_iter().map(decode_mission_plan).collect()
     }
 
+    /// Return a finite newest-first history of cockpit Mission plans for one
+    /// canonical repository. Repository/governance filtering stays in SQLite so
+    /// the caller never scans unrelated Mission payloads or creates a second index.
+    pub fn list_cockpit_mission_history(
+        db: &Database,
+        repository_root: &str,
+        governance_policy_id: &str,
+        limit: usize,
+    ) -> Result<Vec<MissionPlanPreview>, MissionPlanError> {
+        let limit = i64::try_from(limit.max(1)).map_err(|_| {
+            MissionPlanError::Validation("Mission history limit is too large".into())
+        })?;
+        let mut statement = db
+            .conn()
+            .prepare(
+                "SELECT plan_id, plan_revision, request_id, mission_id, mission_revision,
+                        request_digest, content_digest, preview_json, status,
+                        decision_principal_id, decision_reason, created_at_ms, decided_at_ms
+                   FROM mission_plan_revisions
+                  WHERE json_extract(preview_json, '$.repositoryRoot') = ?1
+                    AND json_extract(
+                        preview_json,
+                        '$.missionDefinition.teamPolicy.governancePolicyId'
+                    ) = ?2
+                  ORDER BY COALESCE(decided_at_ms, created_at_ms) DESC, rowid DESC
+                  LIMIT ?3",
+            )
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        let raws = statement
+            .query_map(
+                params![repository_root, governance_policy_id, limit],
+                raw_mission_plan,
+            )
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| MissionPlanError::Persistence(error.to_string()))?;
+        raws.into_iter().map(decode_mission_plan).collect()
+    }
+
     /// Return the most recently *accepted* cockpit Mission for one canonical
     /// repository. `rowid` is the acceptance linearization tiebreaker because a
     /// cockpit row is inserted and accepted in the same serialized transaction;

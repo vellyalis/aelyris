@@ -62,11 +62,12 @@ order and the authoritative specs. Key still-active specs include:
    AIO-48 now requires `mission.review_and_settle` to prove exact current-Mission task
    membership, Review status, and activation lineage before reviewer, candidate, or
    merge effects; every successful merge requires immutable task WorkPacket settlement.
-   AIO-49 now recovers the current Mission's restart-safe packet-backed completion
-   receipt without settlement replay or packet-content exposure. Product delivery is at
-   AIO-50: authenticated MCP must discover bounded prior/current durable Mission rows
-   for one repository without Goal/task payload exposure or a second history owner.
-   Operator/external certification remains pending without owning repository mutation.
+   AIO-49 recovers the current Mission's packet-backed completion receipt and AIO-50
+   discovers bounded prior/current Mission rows without settlement replay, Event history,
+   payload exposure, or a second history owner. Product delivery is at AIO-51: project
+   those existing safe reads into one supported cockpit inspector without frontend-
+   inferred completion or a new Mission/receipt store. Operator/external certification
+   remains pending without owning repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal

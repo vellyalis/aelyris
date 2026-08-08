@@ -13,6 +13,7 @@ const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
 const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
 const mcpMissionCompletion = read("src-tauri/src/api/mcp/mission_completion.rs");
 const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
+const mcpMissionHistory = read("src-tauri/src/api/mcp/mission_history.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionRunNext = read("src-tauri/src/api/mcp/mission_run_next.rs");
 const mcpMissionReviewSettlement = read(
@@ -26,6 +27,7 @@ const apiMcp = [
   mcpOrchestratorStep,
   mcpMissionCompletion,
   mcpMissionContinuity,
+  mcpMissionHistory,
   mcpMissionPlanning,
   mcpMissionRunNext,
   mcpMissionReviewSettlement,
@@ -65,6 +67,11 @@ const orchestratorStepCatalog = sliceBetween(
 const missionCompletionCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.mission.completion"',
+  '"name": "aelyris.mission.history"',
+);
+const missionHistoryCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.history"',
   '"name": "aelyris.mission.current"',
 );
 const missionContinuityCatalog = sliceBetween(
@@ -112,6 +119,7 @@ const requiredTools = [
   "aelyris.orchestrator.step",
   "aelyris.mission.completion",
   "aelyris.mission.current",
+  "aelyris.mission.history",
   "aelyris.mission.plan",
   "aelyris.mission.run_next",
   "aelyris.mission.review_and_settle",
@@ -286,6 +294,38 @@ const checks = [
       taskManager.includes("pub fn cockpit_mission_completion_packet("),
     detail:
       "mission.completion accepts only repository identity, reads validated immutable WorkPacket and aggregate MissionCompletionPacket references from the existing TaskManager/SQLite settlement owner, returns a stable restart-safe receipt, and performs no replay or effect",
+  },
+  {
+    id: "mcp-mission-history-is-bounded-packet-backed-and-payload-free",
+    ok:
+      apiMcp.includes('"aelyris.mission.history"') &&
+      missionHistoryCatalog.includes('"required": ["repoPath"]') &&
+      missionHistoryCatalog.includes('"limit"') &&
+      missionHistoryCatalog.includes('"minimum": 1') &&
+      missionHistoryCatalog.includes('"maximum": 100') &&
+      missionHistoryCatalog.includes('"additionalProperties": false') &&
+      missionHistoryCatalog.includes('"accessMode": "observe-only"') &&
+      missionHistoryCatalog.includes('"readOnly": true') &&
+      !missionHistoryCatalog.includes('"missionId"') &&
+      !missionHistoryCatalog.includes('"planId"') &&
+      !missionHistoryCatalog.includes('"taskId"') &&
+      !missionHistoryCatalog.includes('"workPacketId"') &&
+      !missionHistoryCatalog.includes('"afterSeq"') &&
+      !missionHistoryCatalog.includes('"cursor"') &&
+      mcpMissionHistory.includes("cockpit_mission_history(&repo_path, query_limit)") &&
+      mcpMissionHistory.includes("super::mission_completion::read_durable_completion(") &&
+      mcpMissionHistory.includes('"historyCacheUsed": false') &&
+      mcpMissionHistory.includes('"historyIndexUsed": false') &&
+      mcpMissionHistory.includes('"eventHistoryUsed": false') &&
+      mcpMissionHistory.includes('"rawGoalExposed": false') &&
+      mcpMissionHistory.includes('"taskIdentityExposed": false') &&
+      mcpMissionHistory.includes('"oidValuesExposed": false') &&
+      mcpMissionHistory.includes('"packetIdentityExposed": false') &&
+      mcpMissionHistory.includes('"packetContentsExposed": false') &&
+      taskManager.includes("pub fn cockpit_mission_history(") &&
+      taskManager.includes("TaskRepo::list_cockpit_mission_history("),
+    detail:
+      "mission.history accepts only repository identity plus a bounded limit, reads newest-first durable cockpit rows through the existing TaskManager/SQLite owner, derives completion only from immutable packets, and exposes no Goal/task/event/OID/packet payload",
   },
   {
     id: "mcp-mission-current-is-value-minimized-and-restart-safe",

@@ -4467,6 +4467,7 @@ pub(super) async fn dispatch_authorized(
         "aelyris.orchestrator.step" => super::orchestrator_step::execute(&state, actor, &args)?,
         "aelyris.mission.completion" => super::mission_completion::execute(&state, actor, &args)?,
         "aelyris.mission.current" => super::mission_continuity::execute(&state, actor, &args)?,
+        "aelyris.mission.history" => super::mission_history::execute(&state, actor, &args)?,
         "aelyris.mission.plan" => super::mission_planning::execute(&state, actor, &args).await?,
         "aelyris.mission.run_next" => super::mission_run_next::execute(&state, actor, &args)?,
         "aelyris.mission.review_and_settle" => {

@@ -29,6 +29,17 @@ struct CompletionMaterial {
     receipt_digest: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DurableCompletionRead {
+    Incomplete {
+        work_packet_count: usize,
+    },
+    Completed {
+        work_packet_count: usize,
+        receipt_digest: String,
+    },
+}
+
 fn authenticated_actor(actor: &str) -> ApiResult<&str> {
     let actor = actor.trim();
     if actor.is_empty() {
@@ -233,18 +244,17 @@ fn completion_receipt_digest(
 }
 
 fn validate_completion_material(
-    snapshot: &super::mission_continuity::CurrentMissionSnapshot,
+    mission: &crate::task::MissionPlanPreview,
+    planned_task_ids: &[String],
     activations: Vec<crate::task::MissionPlanActivation>,
     work_packets: Vec<crate::task::CompletedWorkPacket>,
     mission_packet: crate::task::MissionCompletionPacket,
 ) -> ApiResult<CompletionMaterial> {
-    let mission = &snapshot.mission;
-    let task_ids = snapshot
-        .tasks
+    let task_ids = planned_task_ids
         .iter()
-        .map(|task| task.id.as_str())
+        .map(String::as_str)
         .collect::<HashSet<_>>();
-    if activations.len() != snapshot.tasks.len() {
+    if activations.len() != planned_task_ids.len() {
         return Err(ApiError::Conflict(
             "mission_completion_inconsistent: activation count differs from current Mission task count"
                 .to_string(),
@@ -279,7 +289,7 @@ fn validate_completion_material(
         }
     }
 
-    if work_packets.len() != snapshot.tasks.len() {
+    if work_packets.len() != planned_task_ids.len() {
         return Err(ApiError::Conflict(
             "mission_completion_inconsistent: completed TaskGraph lacks an exact WorkPacket set"
                 .to_string(),
@@ -309,10 +319,10 @@ fn validate_completion_material(
         ));
     }
 
-    let mut references = Vec::with_capacity(snapshot.tasks.len());
+    let mut references = Vec::with_capacity(planned_task_ids.len());
     let mut expected_packet_map = BTreeMap::new();
-    for task in &snapshot.tasks {
-        let activation = activation_by_task.get(&task.id).ok_or_else(|| {
+    for task_id in planned_task_ids {
+        let activation = activation_by_task.get(task_id).ok_or_else(|| {
             ApiError::Conflict(
                 "mission_completion_inconsistent: current Mission task lacks activation"
                     .to_string(),
@@ -340,7 +350,7 @@ fn validate_completion_material(
         }
         expected_packet_map.insert(activation.work_unit_id.clone(), packet.packet_id.clone());
         references.push(WorkPacketReference {
-            task_id: task.id.clone(),
+            task_id: task_id.clone(),
             work_unit_id: activation.work_unit_id.clone(),
             packet_id: packet.packet_id,
             packet_digest: packet.packet_digest,
@@ -369,6 +379,121 @@ fn validate_completion_material(
         mission_packet_id: mission_packet.packet_id,
         mission_packet_digest: mission_packet.packet_digest,
         receipt_digest,
+    })
+}
+
+pub(super) fn read_durable_completion(
+    tasks: &crate::task::TaskManager,
+    mission: &crate::task::MissionPlanPreview,
+) -> ApiResult<DurableCompletionRead> {
+    let planned = mission.cockpit_task_plan.as_ref().ok_or_else(|| {
+        ApiError::Conflict(
+            "mission_completion_inconsistent: durable cockpit Mission has no task plan".to_string(),
+        )
+    })?;
+    if planned.is_empty() {
+        return Err(ApiError::Conflict(
+            "mission_completion_inconsistent: durable cockpit Mission has no tasks".to_string(),
+        ));
+    }
+    let planned_task_ids = planned
+        .iter()
+        .map(|task| task.id.clone())
+        .collect::<Vec<_>>();
+    let activations = tasks
+        .mission_activations(&mission.plan_id, mission.plan_revision)
+        .map_err(map_plan_error)?;
+    if activations.len() != planned_task_ids.len() {
+        return Err(ApiError::Conflict(
+            "mission_completion_inconsistent: activation count differs from durable Mission task count"
+                .to_string(),
+        ));
+    }
+    let task_ids = planned_task_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut activation_by_id = HashMap::new();
+    for activation in &activations {
+        if !task_ids.contains(activation.task_id.as_str())
+            || activation.plan_id != mission.plan_id
+            || activation.plan_revision != mission.plan_revision
+            || activation.mission_id != mission.mission_definition.mission_id
+            || activation.mission_revision != mission.mission_definition.revision
+            || activation.plan_content_digest != mission.content_digest
+            || !crate::control::loop_ports::canonical_repo_paths_equal(
+                &activation.repository_root,
+                &mission.repository_root,
+            )
+            .map_err(ApiError::Internal)?
+        {
+            return Err(ApiError::Conflict(
+                "mission_completion_inconsistent: durable activation differs from Mission history entry"
+                    .to_string(),
+            ));
+        }
+        if activation_by_id
+            .insert(activation.activation_id.clone(), activation)
+            .is_some()
+        {
+            return Err(ApiError::Conflict(
+                "mission_completion_inconsistent: duplicate durable activation identity"
+                    .to_string(),
+            ));
+        }
+    }
+
+    let work_packets = tasks
+        .completed_work_packets_for_plan(&mission.plan_id, mission.plan_revision)
+        .map_err(map_plan_error)?;
+    let mut seen_activations = HashSet::new();
+    for packet in &work_packets {
+        packet.validate().map_err(map_plan_error)?;
+        let activation = activation_by_id.get(&packet.activation_id).ok_or_else(|| {
+            ApiError::Conflict(
+                "mission_completion_inconsistent: WorkPacket has no durable Mission activation"
+                    .to_string(),
+            )
+        })?;
+        if !seen_activations.insert(packet.activation_id.as_str())
+            || packet.plan_id != mission.plan_id
+            || packet.plan_revision != mission.plan_revision
+            || packet.mission_id != mission.mission_definition.mission_id
+            || packet.mission_revision != mission.mission_definition.revision
+            || packet.work_unit_id != activation.work_unit_id
+            || packet.plan_content_digest != mission.content_digest
+        {
+            return Err(ApiError::Conflict(
+                "mission_completion_inconsistent: WorkPacket lineage differs from Mission history entry"
+                    .to_string(),
+            ));
+        }
+    }
+
+    let mission_packet = tasks
+        .cockpit_mission_completion_packet(&mission.plan_id, mission.plan_revision)
+        .map_err(map_plan_error)?;
+    let Some(mission_packet) = mission_packet else {
+        if work_packets.len() == planned_task_ids.len() {
+            return Err(ApiError::Conflict(
+                "mission_completion_inconsistent: full WorkPacket set lacks MissionCompletionPacket"
+                    .to_string(),
+            ));
+        }
+        return Ok(DurableCompletionRead::Incomplete {
+            work_packet_count: work_packets.len(),
+        });
+    };
+    let material = validate_completion_material(
+        mission,
+        &planned_task_ids,
+        activations,
+        work_packets,
+        mission_packet,
+    )?;
+    Ok(DurableCompletionRead::Completed {
+        work_packet_count: material.work_packets.len(),
+        receipt_digest: material.receipt_digest,
     })
 }
 
@@ -623,7 +748,18 @@ pub(super) fn execute(
                                 .to_string(),
                         )
                     })?;
-                validate_completion_material(&snapshot, activations, work_packets, mission_packet)
+                let planned_task_ids = snapshot
+                    .tasks
+                    .iter()
+                    .map(|task| task.id.clone())
+                    .collect::<Vec<_>>();
+                validate_completion_material(
+                    &snapshot.mission,
+                    &planned_task_ids,
+                    activations,
+                    work_packets,
+                    mission_packet,
+                )
             })();
             let material = match material {
                 Ok(material) => material,

@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-50`.
-LAST COMPLETED SLICE: `AIO-49`.
-NEXT IMPLEMENTATION SLICE: `AIO-50`.
+ACTIVE SLICE: `AIO-51`.
+LAST COMPLETED SLICE: `AIO-50`.
+NEXT IMPLEMENTATION SLICE: `AIO-51`.
 
 ```yaml
 continuation_contract:
@@ -63,7 +63,8 @@ Current portfolio classification:
 | MCP backend-owned visible Mission run-next | **COMPLETE** | Authenticated MCP now reuses the existing visible cockpit PaneFleet step, derives exact agent/runtime admission in the backend, fails closed for configured unowned token/cost telemetry, and stops at Review |
 | MCP current-Mission-scoped review settlement | **COMPLETE** | Exact current-Mission membership, TaskGraph Review status, and durable activation lineage are revalidated before reviewer, candidate, merge, or Git effects; generic/stale/mixed scope fails closed and every merge requires immutable WorkPacket settlement |
 | MCP durable Mission completion receipt | **COMPLETE** | A reconnecting AI reads the current Mission's validated WorkPacket set, aggregate MissionCompletionPacket, exact immutable references, and stable receipt digest from the existing SQLite owner without replaying settlement |
-| MCP bounded Mission history | **ACTIVE / AIO-50** | An authenticated AI can recover only the current Mission; it still needs bounded prior/current Mission discovery without retaining earlier responses or exposing Goal/task payloads |
+| MCP bounded Mission history | **COMPLETE** | One bounded newest-first SQLite projection distinguishes the exact current incomplete Mission from prior packet-backed completion without cache/index/Event history or Goal/task/packet payload exposure |
+| Cockpit Mission history and receipt inspector | **ACTIVE / AIO-51** | The safe backend history/receipt projections are available only through MCP; the operator still needs one supported cockpit view without frontend completion authority |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -2058,7 +2059,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` restart-safe discovery of prior and current
 accepted cockpit Missions for one repository without Goal or task-payload exposure.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one read-only MCP operation accepting `repoPath` and an optional server-clamped
   finite `limit`. Canonicalize repository identity through the existing Mission owner
@@ -2080,6 +2081,55 @@ Status: **ACTIVE**.
   an authenticated AI can identify the exact latest/current entry and prior packet-
   backed completion entries without retaining previous MCP responses or receiving
   sensitive plan contents.
+
+- Done: `aelyris.mission.history` accepts only `repoPath` and optional `limit`, clamps
+  the effective bound to `1..100`, filters repository plus cockpit governance inside
+  SQLite, and returns stable newest-first rows through the existing TaskManager owner.
+  No history cache, secondary index, journal, Event Bus scan, or packet mirror exists.
+- Done: each row exposes exact Mission/plan identity and revision, status/current flag,
+  bounded task count, exact current TaskGraph status counts only when that projection is
+  valid, and packet-backed completion receipt digest only through AIO-49's immutable
+  WorkPacket/MissionCompletionPacket contract. Prior rows never inherit current graph
+  status or packet truth.
+- Done: focused owner tests passed `5 / 5`; repository scope, newest-first ordering,
+  finite limit, caller-unshaped schema, and payload-free boundary were covered.
+  `cargo check --lib`, MCP owner, and existing fast verification passed.
+- Done: a copied completed-Mission SQLite was given one new real-Codex accepted Mission.
+  The bounded history then returned newest current incomplete Mission
+  `019fe146-6803-70b1-a124-0bb6caaf6b22` / plan
+  `019fe146-6803-70b1-a124-0bc53e9c22d1` followed by prior packet-backed completed
+  Mission `019fe063-fee3-7523-a00f-638599bcafb1` / plan
+  `019fe063-fee3-7523-a00f-639dedb360d0`, retaining receipt digest
+  `570ff4f7a536e872978af4fb9d0b903c83f2a584f25518ce34be551eb2227770`.
+  `limit=1` reported `hasMore:true`; repeated reads and same-SQLite restart were exact,
+  with no target Git mutation, worktree recreation, Event history use, or payload value
+  exposure.
+
+### AIO-51 — Cockpit Mission History And Receipt Inspector
+
+Capability target: `Product-Accessible` operator inspection of current/prior Mission
+status and immutable completion receipts through the existing cockpit.
+Status: **ACTIVE**.
+
+- Add one bounded section to the existing Orchestrator/Cockpit surface; do not create a
+  separate dashboard, route, frontend Mission store, history cache, packet store, or
+  completion authority. The UI consumes backend `mission.history` and current
+  `mission.completion` projections only.
+- Show newest-first Mission identity/revision, accepted/current state, bounded task
+  count/current status summary, and completed/incomplete/inconsistent classification.
+  A completed row may show the stable receipt digest and exact packet references only
+  when provided by the backend packet contract; the UI never infers completion from
+  status labels, files, events, or its own cached response.
+- Keep Goal/context, repository paths, task descriptions/outputs/branches/models/
+  symbols, OIDs, review/evidence, Event payload history, and packet contents out of the
+  surface. Copy actions are limited to backend-returned safe identity or receipt values.
+- Loading, empty, backend-unavailable, inconsistent, and truncated-history states must
+  be explicit. Refresh re-reads backend truth; it must not mutate Mission, TaskGraph,
+  review, merge, settlement, Event ACK, Git, or packet owners.
+- Done when an operator can open one existing cockpit panel, distinguish current
+  incomplete from prior packet-backed completed Missions, inspect/copy the immutable
+  completion receipt, refresh after restart, and observe no frontend-created completion
+  truth or sensitive payload exposure.
 
 ## Deferred After GMV
 
@@ -2128,8 +2178,9 @@ value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
 Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, backend-owned
 visible Mission run-next `AIO-47`, current-Mission-scoped review settlement `AIO-48`,
-and durable Mission completion receipt `AIO-49` are also complete. `GMV-3` is
-Claim-Eligible; bounded Mission history `AIO-50` is the active frontier.
+durable Mission completion receipt `AIO-49`, and bounded Mission history `AIO-50` are
+also complete. `GMV-3` is Claim-Eligible; cockpit Mission history and receipt inspector
+`AIO-51` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

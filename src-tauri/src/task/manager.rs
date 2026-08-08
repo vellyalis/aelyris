@@ -677,6 +677,26 @@ impl TaskManager {
         })
     }
 
+    /// Read a finite newest-first cockpit Mission history for one canonical
+    /// repository. SQLite remains the only history owner; this method creates no
+    /// cache, cursor store, index, or mutable projection.
+    pub fn cockpit_mission_history(
+        &self,
+        repo_path: &str,
+        limit: usize,
+    ) -> Result<Vec<MissionPlanPreview>, MissionPlanError> {
+        let (repository_root, _) = resolve_repository_head(repo_path)?;
+        let db = self.db().ok_or(MissionPlanError::DurabilityUnavailable)?;
+        db.try_with(|database| {
+            TaskRepo::list_cockpit_mission_history(
+                database,
+                &repository_root,
+                COCKPIT_GOVERNANCE_POLICY_ID,
+                limit,
+            )
+        })
+    }
+
     /// Activate one accepted A7.1 plan into exactly one existing TaskGraph task.
     /// The activation row and full graph snapshot commit atomically. Retrying the
     /// same accepted revision returns the durable activation without minting a
@@ -2376,6 +2396,63 @@ mod tests {
         bind_a7_input_revision(&mut input, 1, &head_oid);
         let repo_path = directory.path().to_string_lossy().into_owned();
         (directory, repo_path, input)
+    }
+
+    #[test]
+    fn mission_history_is_repository_scoped_newest_first_and_bounded() {
+        let first_repo = tempfile::tempdir().unwrap();
+        git2::Repository::init(first_repo.path()).unwrap();
+        commit_a7_test_repo(first_repo.path());
+        let first_repo_path = first_repo.path().to_string_lossy().into_owned();
+
+        let second_repo = tempfile::tempdir().unwrap();
+        git2::Repository::init(second_repo.path()).unwrap();
+        commit_a7_test_repo(second_repo.path());
+        let second_repo_path = second_repo.path().to_string_lossy().into_owned();
+
+        let manager = TaskManager::new_durable();
+        manager.attach_db(mem_db()).unwrap();
+        let actor = uuid::Uuid::now_v7().to_string();
+        let (_, first) = manager
+            .submit_cockpit_plan(
+                "first repository Mission",
+                vec![full("history-first", &["first.txt"], &[])],
+                &first_repo_path,
+                &actor,
+            )
+            .unwrap();
+        let (_, second) = manager
+            .submit_cockpit_plan(
+                "newer repository Mission",
+                vec![full("history-second", &["second.txt"], &[])],
+                &first_repo_path,
+                &actor,
+            )
+            .unwrap();
+        manager
+            .submit_cockpit_plan(
+                "other repository Mission",
+                vec![full("history-other", &["other.txt"], &[])],
+                &second_repo_path,
+                &actor,
+            )
+            .unwrap();
+
+        let history = manager
+            .cockpit_mission_history(&first_repo_path, 10)
+            .unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].plan_id, second.plan_id);
+        assert_eq!(history[1].plan_id, first.plan_id);
+        assert!(history
+            .iter()
+            .all(|entry| entry.repository_root == first.repository_root));
+
+        let bounded = manager
+            .cockpit_mission_history(&first_repo_path, 1)
+            .unwrap();
+        assert_eq!(bounded.len(), 1);
+        assert_eq!(bounded[0].plan_id, second.plan_id);
     }
 
     fn v10_shape_packet_json<T: serde::Serialize>(packet: &T) -> (String, String) {
