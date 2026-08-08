@@ -14,7 +14,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 
 const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\//, ""));
 const OUT = resolve(REPO_ROOT, ".codex-auto/production-smoke/chunked-osc-live.json");
@@ -97,11 +97,24 @@ function snapshotText(snap) {
 async function waitForShellReady(id, shell) {
   const deadline = Date.now() + SHELL_READY_TIMEOUT_MS;
   let text = "";
+  let previousText = "";
+  let stablePromptSamples = 0;
+  const projectLeaf = REPO_ROOT.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)?.toLowerCase() ?? "";
   while (Date.now() < deadline) {
     const snap = await call("term_snapshot", { id });
     text = snapshotText(snap);
-    if (shell === "powershell" && /PS\s+.*>\s*$/m.test(text)) return text;
-    if (shell === "gitbash" && /\n\$\s*$/m.test(text)) return text;
+    const normalized = text.replaceAll("\\", "/").toLowerCase();
+    const classicPrompt =
+      (shell === "powershell" && /PS\s+.*>\s*$/m.test(text)) ||
+      (shell === "gitbash" && /\n\$\s*$/m.test(text));
+    const projectPrompt = projectLeaf.length > 0 && normalized.includes(projectLeaf);
+    if ((classicPrompt || projectPrompt) && text === previousText) {
+      stablePromptSamples += 1;
+      if (stablePromptSamples >= 2) return text;
+    } else {
+      stablePromptSamples = 0;
+    }
+    previousText = text;
     await sleep(250);
   }
   throw new Error(`shell did not become ready for ${shell}; sample=${text.slice(-600)}`);

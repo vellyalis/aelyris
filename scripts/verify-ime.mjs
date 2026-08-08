@@ -430,17 +430,17 @@ async function runNativeSurfaceCompositionChecks(page) {
     }));
     const surfaceRect = surface?.getBoundingClientRect();
     const canvasRect = canvas?.getBoundingClientRect();
-    const insideCanvas =
+    const surfaceCoversCanvas =
       Boolean(surfaceRect && canvasRect) &&
-      surfaceRect.left >= canvasRect.left - 1 &&
-      surfaceRect.top >= canvasRect.top - 1 &&
-      surfaceRect.right <= canvasRect.right + 1 &&
-      surfaceRect.bottom <= canvasRect.bottom + 1;
+      surfaceRect.left <= canvasRect.left + 1 &&
+      surfaceRect.top <= canvasRect.top + 1 &&
+      surfaceRect.right >= canvasRect.right - 1 &&
+      surfaceRect.bottom >= canvasRect.bottom - 1;
     return {
       surfaceCount: document.querySelectorAll('[data-native-input-surface="true"]').length,
       terminalId,
       status,
-      insideCanvas,
+      surfaceCoversCanvas,
       surfaceRect: surfaceRect
         ? {
             x: Math.round(surfaceRect.left),
@@ -476,12 +476,12 @@ async function runNativeSurfaceCompositionChecks(page) {
   } else {
     fail(`native input surface status is not ready: ${JSON.stringify(native.status)}`);
   }
-  if (native.insideCanvas && (native.surfaceRect?.w ?? 0) >= 320) {
+  if (native.surfaceCoversCanvas && (native.surfaceRect?.w ?? 0) >= 320) {
     pass(
-      `native input surface geometry inside canvas; surface=${native.surfaceRect?.w}×${native.surfaceRect?.h}, canvas=${native.canvasRect?.w}×${native.canvasRect?.h}`,
+      `native focus surface covers the terminal canvas; surface=${native.surfaceRect?.w}×${native.surfaceRect?.h}, canvas=${native.canvasRect?.w}×${native.canvasRect?.h}`,
     );
   } else {
-    fail(`native input surface geometry invalid or too narrow for Japanese IME: ${JSON.stringify(native)}`);
+    fail(`native focus surface does not cover the terminal canvas or is too narrow for Japanese IME: ${JSON.stringify(native)}`);
   }
 
   console.log("\n[ime] Section 5 — Native commit / long preedit handoff");
