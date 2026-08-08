@@ -68,7 +68,8 @@ fn codex_a7_review_command(prompt: &str, output_schema_path: &Path) -> std::proc
         command
             .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
             .arg(script)
-            .env("AELYRIS_A7_REVIEW_PROMPT", prompt);
+            .env("AELYRIS_A7_REVIEW_PROMPT", prompt)
+            .stdin(Stdio::null());
         command
     }
 
@@ -86,7 +87,8 @@ fn codex_a7_review_command(prompt: &str, output_schema_path: &Path) -> std::proc
             .arg("--skip-git-repo-check")
             .arg("--output-schema")
             .arg(output_schema_path)
-            .arg(prompt);
+            .arg(prompt)
+            .stdin(Stdio::null());
         command
     }
 }
