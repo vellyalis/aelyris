@@ -16,6 +16,7 @@ mod mission_continuity;
 mod mission_history;
 mod mission_planning;
 mod mission_replay_read;
+mod mission_replay_timeline;
 mod mission_review_settlement;
 mod mission_run_next;
 mod mux_topology;
@@ -225,7 +226,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For an exact current-Mission task already in Review, call mission.review_and_settle with only {repoPath, taskId}. Before any reviewer, candidate-freeze, or merge effect, the backend revalidates current accepted Mission membership, TaskGraph Review status, and durable activation lineage; generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed. The fixed independent reviewer then consumes the exact-OID merge authority and mints immutable WorkPacket settlement, plus MissionCompletionPacket when aggregate completion is due. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) After settlement or reconnect, call mission.completion with only {repoPath}. It reads the current Mission's immutable WorkPacket set and aggregate MissionCompletionPacket from the existing SQLite-backed TaskManager, returns a stable receipt digest and exact packet references, and never replays settlement, review, merge, Event ACK, or Git effects. Call mission.history with {repoPath, optional limit} for a bounded newest-first list of prior/current Mission identity and packet-backed completion state; it never scans Event Bus payload history or exposes Goal/task contents. (5) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For an exact current-Mission task already in Review, call mission.review_and_settle with only {repoPath, taskId}. Before any reviewer, candidate-freeze, or merge effect, the backend revalidates current accepted Mission membership, TaskGraph Review status, and durable activation lineage; generic, stale, unrelated, mixed-graph, and non-Review tasks fail closed. The fixed independent reviewer then consumes the exact-OID merge authority and mints immutable WorkPacket settlement, plus MissionCompletionPacket when aggregate completion is due. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) After settlement or reconnect, call mission.completion with only {repoPath}. It reads the current Mission's immutable WorkPacket set and aggregate MissionCompletionPacket from the existing SQLite-backed TaskManager, returns a stable receipt digest and exact packet references, and never replays settlement, review, merge, Event ACK, or Git effects. Call mission.history with {repoPath, optional limit} for a bounded newest-first list of prior/current Mission identity and packet-backed completion state; it never scans Event Bus payload history or exposes Goal/task contents. Call mission.replay with {repoPath} to read the deterministic current-Mission replay hash and bounded source counts without invoking recovery or exposing raw Task/event/packet payloads. Call mission.replay_timeline with {repoPath, optional limit} to inspect a bounded newest checkpoint window after the backend has reduced and validated the complete Mission timeline; it grants no checkpoint selection, recovery, or rollback authority. (5) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
 
 fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
@@ -354,7 +355,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 96] = [
+    const FROZEN_A64_VERBS: [&str; 97] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -409,6 +410,7 @@ mod tests {
         "aelyris.mission.current",
         "aelyris.mission.history",
         "aelyris.mission.replay",
+        "aelyris.mission.replay_timeline",
         "aelyris.mission.plan",
         "aelyris.mission.run_next",
         "aelyris.mission.review_and_settle",
@@ -4774,6 +4776,336 @@ mod tests {
         assert_eq!(
             schema_error["error"]["schema_violation"]["verb"],
             "aelyris.mission.replay"
+        );
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["checkpointId"])
+        );
+    }
+
+    #[test]
+    fn mcp_mission_replay_timeline_is_bounded_stable_and_payload_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+        use crate::task::{Task, TaskManager, TaskStatus};
+
+        let schema = input_schema_for_tool_ref("aelyris.mission.replay_timeline")
+            .expect("Mission replay timeline schema");
+        assert_eq!(schema["required"], serde_json::json!(["repoPath"]));
+        assert_eq!(schema["additionalProperties"], false);
+        let properties = schema["properties"].as_object().expect("schema properties");
+        assert_eq!(
+            properties.keys().cloned().collect::<BTreeSet<_>>(),
+            ["limit".to_string(), "repoPath".to_string()]
+                .into_iter()
+                .collect()
+        );
+        assert_eq!(properties["repoPath"]["maxLength"], 4096);
+        assert_eq!(properties["limit"]["minimum"], 1);
+        for forbidden in [
+            "missionId",
+            "planId",
+            "taskId",
+            "eventId",
+            "afterSeq",
+            "checkpointId",
+            "checkpointHash",
+            "cursor",
+            "restore",
+            "rollback",
+        ] {
+            assert!(properties.get(forbidden).is_none());
+        }
+
+        let tools = tools_list_value();
+        let tool = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.mission.replay_timeline")
+            .expect("Mission replay timeline tool");
+        assert_eq!(tool["safety"], "FREE");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["readOnly"], true);
+        let description = tool["description"].as_str().unwrap();
+        for required in [
+            "bounded newest checkpoint window",
+            "fully reduces and validates",
+            "before truncating only the returned checkpoint list",
+            "zero-effect guarantees",
+            "recovery/rollback authority",
+        ] {
+            assert!(
+                description.contains(required),
+                "description missing {required}"
+            );
+        }
+
+        let repository = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(repository.path()).unwrap();
+        let signature = git2::Signature::now("Timeline MCP", "timeline@example.invalid").unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "fixture", &tree, &[])
+            .unwrap();
+        let repo_path = repository.path().to_string_lossy().into_owned();
+        let goal = "V2_M3_RAW_GOAL_MUST_NOT_BE_RETURNED_OR_LOGGED";
+        let task_id = "timeline-private-task";
+        let mut task = Task::new(task_id, "Hidden timeline task")
+            .with_branches("agent/timeline-private-task", "main");
+        task.owner = Some("timeline-implementer".to_string());
+        task.model = Some("codex".to_string());
+        task.outputs = vec!["src/private-timeline-output.rs".to_string()];
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = Arc::new(TaskManager::new_durable());
+        tasks.attach_db(db.clone()).unwrap();
+        let (_, mission) = tasks
+            .submit_cockpit_plan(
+                goal,
+                vec![task],
+                &repo_path,
+                &uuid::Uuid::now_v7().to_string(),
+            )
+            .unwrap();
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(db.clone());
+        events
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::TaskCreated,
+                    serde_json::json!({ "id": task_id }),
+                )
+                .with_idempotency_key("timeline-mcp-created"),
+            )
+            .unwrap();
+        tasks.transition(task_id, TaskStatus::Running).unwrap();
+        events
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::ExecutionReserved,
+                    serde_json::json!({ "taskId": task_id, "attemptId": "hidden-attempt" }),
+                )
+                .with_idempotency_key("timeline-mcp-running"),
+            )
+            .unwrap();
+        tasks.transition(task_id, TaskStatus::Review).unwrap();
+        events
+            .publish(
+                AgentEvent::new(
+                    AgentEventKind::ReviewRequired,
+                    serde_json::json!({ "id": task_id }),
+                )
+                .with_idempotency_key("timeline-mcp-review"),
+            )
+            .unwrap();
+
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("V2_M3_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+        )
+        .with_db(Some(db.clone()))
+        .with_task_manager(tasks.clone())
+        .with_event_bus(events.clone());
+        let task_snapshot = serde_json::to_value(tasks.list()).unwrap();
+        let event_frontier = events.frontier().unwrap();
+        let head_before = repo.head().unwrap().target().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let read = || {
+            let Json(envelope) = rt
+                .block_on(tools_call_as_actor(
+                    &state,
+                    "mission-timeline-operator",
+                    ToolCallBody {
+                        name: "aelyris.mission.replay_timeline".to_string(),
+                        arguments: serde_json::json!({ "repoPath": repo_path, "limit": 2 }),
+                    },
+                ))
+                .expect("Mission replay timeline read");
+            assert_eq!(envelope["ok"], true);
+            envelope["result"].clone()
+        };
+        let first = read();
+        let second = read();
+        assert_eq!(first["outcome"], "ok");
+        assert_eq!(first["found"], true);
+        assert_eq!(first["effectiveLimit"], 2);
+        assert_eq!(
+            first["timeline"]["mission"]["missionId"],
+            mission.mission_definition.mission_id
+        );
+        assert_eq!(first["timeline"]["mission"]["planId"], mission.plan_id);
+        assert_eq!(
+            first["timeline"]["timelineHash"],
+            second["timeline"]["timelineHash"]
+        );
+        assert_eq!(
+            first["timeline"]["timelineHash"].as_str().unwrap().len(),
+            64
+        );
+        assert_eq!(first["timeline"]["totalCheckpointCount"], 4);
+        assert_eq!(first["timeline"]["returnedCheckpointCount"], 2);
+        assert_eq!(first["timeline"]["returnedStartPosition"], 2);
+        assert_eq!(first["timeline"]["hasMore"], true);
+        assert_eq!(
+            first["timeline"]["checkpoints"].as_array().unwrap().len(),
+            2
+        );
+        assert_eq!(first["timeline"]["checkpoints"][0]["position"], 2);
+        assert_eq!(
+            first["timeline"]["checkpoints"][0]["eventKind"],
+            "execution_reserved"
+        );
+        assert_eq!(first["timeline"]["checkpoints"][1]["position"], 3);
+        assert_eq!(
+            first["timeline"]["checkpoints"][1]["eventKind"],
+            "review_required"
+        );
+        assert_eq!(first["timeline"]["finalTaskStatusCounts"]["review"], 1);
+        assert_eq!(first["timeline"]["finalCompletedWorkCount"], 0);
+        assert_eq!(
+            first["timeline"]["finalPacketBackedMissionState"],
+            "incomplete"
+        );
+        assert_eq!(first["timeline"]["guarantees"]["sideEffectCount"], 0);
+        assert_eq!(first["timeline"]["guarantees"]["secondJournalUsed"], false);
+        assert_eq!(
+            first["timeline"]["guarantees"]["secondTaskGraphUsed"],
+            false
+        );
+        assert_eq!(
+            first["timeline"]["guarantees"]["secondPacketStoreUsed"],
+            false
+        );
+        assert_eq!(first["timeline"]["guarantees"]["replayCacheUsed"], false);
+        for checkpoint in first["timeline"]["checkpoints"].as_array().unwrap() {
+            assert_eq!(
+                checkpoint
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .collect::<BTreeSet<_>>(),
+                [
+                    "checkpointHash".to_string(),
+                    "completedWorkCount".to_string(),
+                    "eventKind".to_string(),
+                    "packetBackedMissionState".to_string(),
+                    "position".to_string(),
+                    "taskStatusCounts".to_string(),
+                ]
+                .into_iter()
+                .collect()
+            );
+        }
+        for flag in [
+            "repositoryPathExposed",
+            "rawGoalOrContextExposed",
+            "taskIdentityOrPayloadExposed",
+            "executionIdentityExposed",
+            "eventIdentityOrPayloadExposed",
+            "globalEventSequenceExposed",
+            "oidValuesExposed",
+            "reviewOrEvidenceExposed",
+            "packetIdentityOrContentsExposed",
+            "checkpointPrivateMaterialExposed",
+            "recoveryOrRollbackAuthorityExposed",
+        ] {
+            assert_eq!(first["exposure"][flag], false, "flag {flag}");
+        }
+        let response_text = serde_json::to_string(&first).unwrap();
+        for hidden in [
+            goal,
+            repo_path.as_str(),
+            task_id,
+            "Hidden timeline task",
+            "hidden-attempt",
+            "src/private-timeline-output.rs",
+            "V2_M3_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+        ] {
+            assert!(!response_text.contains(hidden), "response exposed {hidden}");
+        }
+        assert_eq!(serde_json::to_value(tasks.list()).unwrap(), task_snapshot);
+        assert_eq!(events.frontier().unwrap(), event_frontier);
+        assert_eq!(repo.head().unwrap().target().unwrap(), head_before);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_mission_replay_timeline_read".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read Mission replay timeline audit");
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            assert_eq!(row.agent_id.as_deref(), Some("mission-timeline-operator"));
+            assert_eq!(row.redacted_payload_json["status"], "accepted");
+            assert_eq!(row.redacted_payload_json["outcome"], "ok");
+            assert_eq!(row.redacted_payload_json["replayInvoked"], true);
+            assert_eq!(row.redacted_payload_json["totalCheckpointCount"], 4);
+            assert_eq!(row.redacted_payload_json["returnedCheckpointCount"], 2);
+            assert_eq!(row.redacted_payload_json["hasMore"], true);
+            assert_eq!(row.redacted_payload_json["projectionSideEffectCount"], 0);
+            assert_eq!(
+                row.redacted_payload_json["timelineHashDigest"]
+                    .as_str()
+                    .unwrap()
+                    .len(),
+                64
+            );
+            assert_ne!(
+                row.redacted_payload_json["timelineHashDigest"],
+                first["timeline"]["timelineHash"]
+            );
+            for flag in [
+                "repositoryPathLogged",
+                "goalOrContextLogged",
+                "missionOrPlanIdentityLogged",
+                "taskIdentityOrPayloadLogged",
+                "executionIdentityLogged",
+                "eventIdentitySequenceOrPayloadLogged",
+                "oidValuesLogged",
+                "reviewOrEvidenceLogged",
+                "packetIdentityOrContentsLogged",
+                "checkpointPrivateMaterialLogged",
+                "rawTimelineHashLogged",
+            ] {
+                assert_eq!(row.redacted_payload_json[flag], false, "flag {flag}");
+            }
+            let audit_text = serde_json::to_string(&row).unwrap();
+            for hidden in [
+                goal,
+                repo_path.as_str(),
+                task_id,
+                "V2_M3_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let Json(schema_error) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "mission-timeline-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.replay_timeline".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path,
+                        "checkpointId": "caller-shaped",
+                    }),
+                },
+            ))
+            .expect("schema rejection is structured");
+        assert_eq!(schema_error["ok"], false);
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["verb"],
+            "aelyris.mission.replay_timeline"
         );
         assert_eq!(
             schema_error["error"]["schema_violation"]["unknown"],

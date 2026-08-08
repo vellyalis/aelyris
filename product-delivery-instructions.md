@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `APEX V2 MISSION TIME MACHINE`.
-ACTIVE SLICE: `V2-M3`.
-LAST COMPLETED SLICE: `V2-M2`.
-NEXT IMPLEMENTATION SLICE: `V2-M3`.
+ACTIVE SLICE: `V2-M4`.
+LAST COMPLETED SLICE: `V2-M3`.
+NEXT IMPLEMENTATION SLICE: `V2-M4`.
 
 ```yaml
 continuation_contract:
@@ -70,7 +70,8 @@ Current portfolio classification:
 | Apex V2 deterministic Mission replay baseline | **COMPLETE / V2-M0** | One inert canonical projection/hash now reads existing durable Mission, TaskGraph, execution, event, and packet owners; equal scoped facts rebuild identically after restart with zero replay effects |
 | Apex V2 product-accessible Mission replay read | **COMPLETE / V2-M1** | Authenticated MCP now returns the current Mission's deterministic hash, bounded source summary, and zero-effect guarantees while raw Task/execution/event/OID/review/packet values remain closed |
 | Apex V2 historical replay reducer baseline | **COMPLETE / V2-M2** | The immutable plan and Mission-scoped durable event sequence now rebuild bounded task-state checkpoints, packet-backed completion, and one stable timeline hash with current-state convergence and no second history store |
-| Apex V2 product-accessible replay timeline | **ACTIVE / V2-M3** | Expose bounded checkpoint summaries and hashes through authenticated MCP without returning task identities, event payloads, OIDs, packet references, or recovery authority |
+| Apex V2 product-accessible replay timeline | **COMPLETE / V2-M3** | Authenticated MCP now reduces the full source timeline, then returns a bounded newest checkpoint window with hashes/status counts and no task/event/OID/packet/recovery authority exposure |
+| Apex V2 Cockpit replay timeline | **ACTIVE / V2-M4** | Add one on-demand read-only timeline inside the existing Mission history area, consuming the same safe backend projection without frontend replay or recovery ownership |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2307,7 +2308,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated bounded inspection of the V2-M2
 historical replay checkpoints for the exact current accepted Mission.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one read-only MCP operation accepting only `repoPath` plus an optional server-
   clamped checkpoint limit. It delegates to the V2-M2 pure reducer and may truncate
@@ -2326,6 +2327,49 @@ Status: **ACTIVE**.
   success. Principal-bound audit stores only one-way digests, aggregate counts,
   truncation flags, final state, and rejection code; it never replays after audit
   failure.
+
+- Done: `aelyris.mission.replay_timeline` accepts only `repoPath` plus optional `limit`.
+  The server always reduces and validates the complete V2-M2 source timeline first,
+  then returns only the newest `min(limit, 100)` checkpoints. Truncation cannot hide a
+  final convergence or packet failure.
+- Done: the response includes exact Mission/plan identity and revision, timeline hash,
+  total/returned checkpoint counts, returned start position, `hasMore`, safe checkpoint
+  summaries/hashes, final status/completion summary, source aggregates, and V2 zero-
+  effect/second-owner guarantees.
+- Done: checkpoint objects contain only relative position, event kind, status counts,
+  completed-work count, packet-backed state, and checkpoint hash. Raw Goal/context,
+  repository path, task/execution identity or payload, event identity/payload/global
+  sequence, OID, review/evidence, packet identity/contents, private hash material, and
+  recovery/rollback authority remain absent.
+- Done: Principal-bound audit retains only one-way repository/input/timeline-hash
+  digests, limit/truncation aggregates, final completed-work/packet state, outcome, and
+  rejection code. Repeated reads returned the same raw timeline hash while audit stored
+  only a distinct domain-separated digest; TaskGraph, Event frontier, and Git HEAD were
+  unchanged.
+- Done: focused CLI-only replay tests passed `16 / 16`, the exact 97-tool catalog/schema/
+  dispatch parity test passed, and MCP owner, Rust check/fmt, fast, Work OS, decision-
+  knowledge, and diff gates passed.
+
+### V2-M4 — Cockpit Mission Replay Timeline
+
+Capability target: one on-demand operator view of the current Mission's deterministic
+checkpoint timeline inside the existing Mission history/receipt Cockpit section.
+Status: **ACTIVE**.
+
+- Reuse the V2-M3 backend projection through one Tauri IPC bridge. Do not create a
+  frontend reducer, Mission/task/event store, checkpoint cache, timeline authority,
+  recovery path, new route, or separate dashboard.
+- The collapsed default performs no read. On expansion, show newest checkpoint rows,
+  timeline hash, total/returned counts, truncation state, final status/completion
+  summary, and explicit read-only/zero-effect boundary. Refresh always re-reads backend
+  truth.
+- Do not display or copy raw Goal/context, repository path, task/execution identity,
+  event id/payload/global sequence, OID, review/evidence, packet identity/contents, or
+  checkpoint private material. Copy is limited to backend-returned timeline/checkpoint
+  hashes.
+- Loading, empty/not-found, backend-unavailable, inconsistent, and truncated states are
+  explicit. Automated verification remains CLI/unit or hidden/non-focusing only; no
+  foreground window may be opened or focused.
 
 ## Deferred After GMV
 

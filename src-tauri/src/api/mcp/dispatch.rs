@@ -4469,6 +4469,9 @@ pub(super) async fn dispatch_authorized(
         "aelyris.mission.current" => super::mission_continuity::execute(&state, actor, &args)?,
         "aelyris.mission.history" => super::mission_history::execute(&state, actor, &args)?,
         "aelyris.mission.replay" => super::mission_replay_read::execute(&state, actor, &args)?,
+        "aelyris.mission.replay_timeline" => {
+            super::mission_replay_timeline::execute(&state, actor, &args)?
+        }
         "aelyris.mission.plan" => super::mission_planning::execute(&state, actor, &args).await?,
         "aelyris.mission.run_next" => super::mission_run_next::execute(&state, actor, &args)?,
         "aelyris.mission.review_and_settle" => {

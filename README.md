@@ -101,11 +101,14 @@ aelyris.mission.review_and_settle
 aelyris.mission.completion
 aelyris.mission.history
 aelyris.mission.replay
+aelyris.mission.replay_timeline
 ```
 
 The caller supplies only the bounded identity or Goal fields required for each step. Planner selection, TaskGraph authority, reviewer identity, verdict, candidate OID, merge authority, and packet creation remain backend-owned.
 
 `aelyris.mission.replay` is observation-only: it returns the current Mission's deterministic replay hash, bounded durable-source counts, and zero-effect guarantees without returning raw Task, execution, event, OID, review, or packet payloads.
+
+`aelyris.mission.replay_timeline` reduces and validates the complete Mission history first, then returns only a server-bounded newest checkpoint window with status counts and canonical hashes. It exposes no event identity/payload and grants no recovery or rollback authority.
 
 ## Honest boundaries
 

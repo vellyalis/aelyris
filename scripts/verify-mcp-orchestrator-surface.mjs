@@ -15,6 +15,7 @@ const mcpMissionCompletion = read("src-tauri/src/api/mcp/mission_completion.rs")
 const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
 const mcpMissionHistory = read("src-tauri/src/api/mcp/mission_history.rs");
 const mcpMissionReplay = read("src-tauri/src/api/mcp/mission_replay_read.rs");
+const mcpMissionReplayTimeline = read("src-tauri/src/api/mcp/mission_replay_timeline.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionRunNext = read("src-tauri/src/api/mcp/mission_run_next.rs");
 const mcpMissionReviewSettlement = read(
@@ -30,6 +31,7 @@ const apiMcp = [
   mcpMissionContinuity,
   mcpMissionHistory,
   mcpMissionReplay,
+  mcpMissionReplayTimeline,
   mcpMissionPlanning,
   mcpMissionRunNext,
   mcpMissionReviewSettlement,
@@ -79,6 +81,11 @@ const missionHistoryCatalog = sliceBetween(
 const missionReplayCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.mission.replay"',
+  '"name": "aelyris.mission.replay_timeline"',
+);
+const missionReplayTimelineCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.replay_timeline"',
   '"name": "aelyris.mission.current"',
 );
 const missionContinuityCatalog = sliceBetween(
@@ -128,6 +135,7 @@ const requiredTools = [
   "aelyris.mission.current",
   "aelyris.mission.history",
   "aelyris.mission.replay",
+  "aelyris.mission.replay_timeline",
   "aelyris.mission.plan",
   "aelyris.mission.run_next",
   "aelyris.mission.review_and_settle",
@@ -357,6 +365,34 @@ const checks = [
       mcpMissionReplay.includes('"packetContentsExposed": false'),
     detail:
       "mission.replay accepts only repository identity, delegates once to the pure V2 replay builder, returns a stable hash and bounded counts, and exposes no raw Mission/task/event/OID/packet payload or recovery authority",
+  },
+  {
+    id: "mcp-mission-replay-timeline-is-bounded-converged-and-payload-free",
+    ok:
+      apiMcp.includes('"aelyris.mission.replay_timeline"') &&
+      missionReplayTimelineCatalog.includes('"required": ["repoPath"]') &&
+      missionReplayTimelineCatalog.includes('"limit"') &&
+      missionReplayTimelineCatalog.includes('"additionalProperties": false') &&
+      missionReplayTimelineCatalog.includes('"accessMode": "observe-only"') &&
+      missionReplayTimelineCatalog.includes('"readOnly": true') &&
+      !missionReplayTimelineCatalog.includes('"taskId"') &&
+      !missionReplayTimelineCatalog.includes('"eventId"') &&
+      !missionReplayTimelineCatalog.includes('"checkpointId"') &&
+      !missionReplayTimelineCatalog.includes('"rollback"') &&
+      mcpMissionReplayTimeline.includes(
+        "crate::mission_replay::replay_current_mission_timeline(",
+      ) &&
+      mcpMissionReplayTimeline.includes("total_checkpoint_count.saturating_sub(effective_limit)") &&
+      mcpMissionReplayTimeline.includes('"projectionSideEffectCount": 0') &&
+      mcpMissionReplayTimeline.includes('"rawTimelineHashLogged": false') &&
+      mcpMissionReplayTimeline.includes('"taskIdentityOrPayloadExposed": false') &&
+      mcpMissionReplayTimeline.includes('"eventIdentityOrPayloadExposed": false') &&
+      mcpMissionReplayTimeline.includes('"globalEventSequenceExposed": false') &&
+      mcpMissionReplayTimeline.includes('"packetIdentityOrContentsExposed": false') &&
+      mcpMissionReplayTimeline.includes('"checkpointPrivateMaterialExposed": false') &&
+      mcpMissionReplayTimeline.includes('"recoveryOrRollbackAuthorityExposed": false'),
+    detail:
+      "mission.replay_timeline reduces the complete source timeline before returning a server-bounded newest checkpoint window, with final convergence/packet truth retained and all raw identity/payload/recovery authority closed",
   },
   {
     id: "mcp-mission-current-is-value-minimized-and-restart-safe",
