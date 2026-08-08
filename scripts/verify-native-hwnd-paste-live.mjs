@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\//, ""));
 const OUT = resolve(ROOT, ".codex-auto/production-smoke/native-hwnd-paste-live.json");
@@ -28,6 +29,24 @@ const NATIVE_PROOF_SOURCE_PATHS = [
 ];
 
 function writeArtifact(report) {
+  const generatedAt = report.generatedAt ?? new Date().toISOString();
+  report.generatedAt = generatedAt;
+  report.provenance = createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-native-hwnd-paste-live.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      "scripts/verify-native-client-spike.mjs",
+      "package.json",
+      ".codex-auto/quality/native-client-spike.json",
+      ...NATIVE_PROOF_SOURCE_PATHS,
+      "src/features/terminal/hooks/useCanvasIME.ts",
+      "src-tauri/src/ipc/commands.rs",
+      "src-tauri/src/ipc/ime_commands.rs",
+      "src-tauri/src/term/native_input.rs",
+    ],
+    generatedAt,
+  });
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
 }

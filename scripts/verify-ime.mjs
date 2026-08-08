@@ -31,7 +31,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { chromium } from "@playwright/test";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
+const ROOT = process.cwd();
 const CDP = process.env.AELYRIS_IME_CDP ?? "http://127.0.0.1:9222";
 const APP_URL = process.env.AELYRIS_IME_URL ?? "http://localhost:1420/";
 const APP_ORIGIN = new URL(APP_URL).origin;
@@ -50,6 +52,22 @@ const report = {
 
 function writeArtifact() {
   report.completedAt = new Date().toISOString();
+  report.generatedAt = report.completedAt;
+  report.provenance = createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-ime.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      "package.json",
+      "src/features/terminal/TerminalCanvas.tsx",
+      "src/features/terminal/hooks/useCanvasIME.ts",
+      "src-tauri/src/ipc/commands.rs",
+      "src-tauri/src/ipc/ime_commands.rs",
+      "src-tauri/src/lib.rs",
+      "src-tauri/src/term/native_input.rs",
+    ],
+    generatedAt: report.completedAt,
+  });
   const path = resolve(OUT);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
@@ -67,20 +85,33 @@ function environmentBlockedReason() {
 
 function writeEnvironmentBlockedArtifact() {
   report.completedAt = new Date().toISOString();
+  report.generatedAt = report.completedAt;
   const path = resolve(`${OUT}.environment-blocked.json`);
   mkdirSync(dirname(path), { recursive: true });
+  const payload = {
+    ...report,
+    status: "environment-blocked",
+    environmentBlockedReason: environmentBlockedReason(),
+    preservesPrimaryArtifact: true,
+  };
+  payload.provenance = createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-ime.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      "package.json",
+      "src/features/terminal/TerminalCanvas.tsx",
+      "src/features/terminal/hooks/useCanvasIME.ts",
+      "src-tauri/src/ipc/commands.rs",
+      "src-tauri/src/ipc/ime_commands.rs",
+      "src-tauri/src/lib.rs",
+      "src-tauri/src/term/native_input.rs",
+    ],
+    generatedAt: report.completedAt,
+  });
   writeFileSync(
     path,
-    `${JSON.stringify(
-      {
-        ...report,
-        status: "environment-blocked",
-        environmentBlockedReason: environmentBlockedReason(),
-        preservesPrimaryArtifact: true,
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(payload, null, 2)}\n`,
   );
   return path;
 }

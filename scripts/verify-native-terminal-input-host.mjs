@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT =
@@ -278,10 +279,11 @@ const checks = [
 ];
 
 const failed = checks.filter((item) => item.status !== "passed");
+const generatedAt = new Date().toISOString();
 const report = {
   version: 1,
   ok: failed.length === 0,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   status: failed.length === 0 ? "pass" : "blocked",
   evidence: {
     nativeClientArtifactPath,
@@ -296,6 +298,25 @@ const report = {
     : [],
   checks,
   blockers: failed.map((item) => item.detail),
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-native-terminal-input-host.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      "package.json",
+      "scripts/verify-native-client-spike.mjs",
+      nativeClientArtifactPath,
+      nativeHwndPasteLiveArtifactPath,
+      ...nativeProofSourcePaths,
+      "src/features/terminal/TerminalCanvas.tsx",
+      "src/features/terminal/hooks/useCanvasIME.ts",
+      "src-tauri/src/ipc/commands.rs",
+      "src-tauri/src/ipc/ime_commands.rs",
+      "src-tauri/src/lib.rs",
+      "src-tauri/src/term/native_input.rs",
+    ],
+    generatedAt,
+  }),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });

@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const extension = process.platform === "win32" ? ".exe" : "";
@@ -777,6 +778,23 @@ async function main() {
       };
       killProcess(second.child);
     }
+    report.provenance = createEvidenceProvenance({
+      root,
+      verifierPath: "scripts/verify-mux-live-restore.mjs",
+      inputPaths: [
+        "scripts/evidence-provenance.mjs",
+        "scripts/build-pty-sidecar.mjs",
+        "package.json",
+        "src-tauri/pty-server/Cargo.toml",
+        "src-tauri/pty-server/src/main.rs",
+        "src-tauri/src/api/mod.rs",
+        "src-tauri/src/bin/aelys.rs",
+        "src-tauri/src/pty/mod.rs",
+        "src-tauri/src/pty_sidecar.rs",
+        "src-tauri/src/startup_reconciliation.rs",
+      ],
+      generatedAt: report.generatedAt,
+    });
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
     rmSync(tempRoot, { recursive: true, force: true });

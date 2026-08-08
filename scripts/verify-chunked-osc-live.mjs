@@ -15,6 +15,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { chromium } from "@playwright/test";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\//, ""));
 const OUT = resolve(REPO_ROOT, ".codex-auto/production-smoke/chunked-osc-live.json");
@@ -24,6 +25,24 @@ const REQUIRED_CASE_COUNT = 4;
 const REQUIRED_SHELLS = ["powershell", "gitbash"];
 
 function writeArtifact(report) {
+  const generatedAt = report.generatedAt ?? new Date().toISOString();
+  report.generatedAt = generatedAt;
+  report.provenance = createEvidenceProvenance({
+    root: REPO_ROOT,
+    verifierPath: "scripts/verify-chunked-osc-live.mjs",
+    inputPaths: [
+      "scripts/evidence-provenance.mjs",
+      "scripts/aelyris-imgcat.ps1",
+      "scripts/aelyris-imgcat.sh",
+      "package.json",
+      "e2e/fixtures/inline-image-1x1.png",
+      "e2e/fixtures/inline-image-32x32.png",
+      "src/features/terminal/TerminalCanvas.tsx",
+      "src-tauri/src/ipc/commands.rs",
+      "src-tauri/src/term/mod.rs",
+    ],
+    generatedAt,
+  });
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);
 }
