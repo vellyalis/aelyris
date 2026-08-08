@@ -22,6 +22,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-pty-sidecar-dev.ps1 && tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:dev:verification": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-tauri-verification-hidden.ps1",
     "tauri:build:dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-dist-windows.ps1",
     "verify:dist": "node scripts/verify-dist-artifacts.mjs",
     "verify:release:doctor": "node scripts/release-doctor.mjs",

@@ -89,6 +89,15 @@ product-delivery, and work-order contracts below remain mandatory.
 
 ### Verification Lanes And Forward Progress
 
+- Automated verification must never steal the operator's active window. Do not launch
+  Tauri, WebView2, native proof windows, browser UI, or any other GUI in a visible,
+  focused, always-on-top, maximized, or fullscreen state. Prefer CLI/unit/headless
+  verification. When a real WebView runtime is indispensable, use only
+  `pnpm tauri:dev:verification`, which merges
+  `src-tauri/tauri.verification.conf.json` (`visible:false`, `focus:false`,
+  `skipTaskbar:true`, `alwaysOnTop:false`). If a required proof cannot be collected
+  without foreground activation, leave it as an explicit operator gate; do not seize
+  focus or interrupt games and other foreground work.
 - 非自明な検証を始める前に`.agents/skills/verification-economy/SKILL.md`を読み、
   `pnpm verification:plan`でClaim・変更owner・focused proof・full昇格条件を固定する。
   expensive gateは`pnpm verification:run`経由にし、同一diff fingerprintで既にPASSした

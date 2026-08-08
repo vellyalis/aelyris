@@ -155,6 +155,8 @@ corepack pnpm tauri dev
 
 The bootstrap checks the local toolchain, performs a frozen dependency install, reconstructs ignored continuation state from tracked Git truth, and runs the fresh-clone gate. It does not copy another machine’s credentials, tokens, signing material, or generated evidence.
 
+Automated UI verification must not steal the operator's foreground window. Use `corepack pnpm tauri:dev:verification` for the hidden, non-focusing Tauri runtime; ordinary `tauri:dev` is for deliberate interactive development only.
+
 ## Build
 
 ```powershell

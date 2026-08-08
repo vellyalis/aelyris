@@ -155,6 +155,8 @@ corepack pnpm tauri dev
 
 bootstrap は toolchain を確認し、frozen install を行い、tracked Git truth から ignored continuation state を再構築し、fresh-clone gate を実行します。別 PC の credential、token、署名材料、generated evidence はコピーしません。
 
+自動 UI 検証では、オペレーターのアクティブウィンドウを絶対に奪いません。非表示・非フォーカスの Tauri runtime には `corepack pnpm tauri:dev:verification` を使い、通常の `tauri:dev` は明示的な対話開発にだけ使用します。
+
 ## Build
 
 ```powershell

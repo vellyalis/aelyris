@@ -8,6 +8,9 @@ const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "tauri-runtime-hygiene.json");
 const LOG_DIR = join(ROOT, ".codex-auto");
 const DEV_SIDECAR_BUILD_SCRIPT = join(ROOT, "scripts", "build-pty-sidecar-dev.ps1");
+const HIDDEN_VERIFICATION_RUNNER = join(ROOT, "scripts", "run-tauri-verification-hidden.ps1");
+const HIDDEN_VERIFICATION_CONFIG = join(ROOT, "src-tauri", "tauri.verification.conf.json");
+const PACKAGE_JSON = join(ROOT, "package.json");
 const WORKSPACE_PROCESS_SNAPSHOT_PATH = ".codex-auto/quality/workspace-process-snapshot.json";
 const WORKSPACE_PROCESS_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 const STATIC_LOG_RUNS = [
@@ -380,6 +383,14 @@ async function main() {
   const devSidecarBuildSource = existsSync(DEV_SIDECAR_BUILD_SCRIPT)
     ? readFileSync(DEV_SIDECAR_BUILD_SCRIPT, "utf8")
     : "";
+  const hiddenVerificationRunnerSource = existsSync(HIDDEN_VERIFICATION_RUNNER)
+    ? readFileSync(HIDDEN_VERIFICATION_RUNNER, "utf8")
+    : "";
+  const hiddenVerificationConfig = existsSync(HIDDEN_VERIFICATION_CONFIG)
+    ? JSON.parse(readFileSync(HIDDEN_VERIFICATION_CONFIG, "utf8"))
+    : null;
+  const packageJson = existsSync(PACKAGE_JSON) ? JSON.parse(readFileSync(PACKAGE_JSON, "utf8")) : null;
+  const hiddenVerificationWindow = hiddenVerificationConfig?.app?.windows?.[0] ?? null;
   const logRuns = discoverTauriDevLogRuns().map(readLogRun);
   const activeLogRun =
     logRuns
@@ -443,6 +454,21 @@ async function main() {
       devSidecarBuildSource.includes("Get-CimInstance Win32_Process") &&
       devSidecarBuildSource.includes("Replace-DevSidecarExecutable") &&
       devSidecarBuildSource.includes("Stop-Process"),
+    automatedUiVerificationCannotStealFocus:
+      hiddenVerificationWindow?.visible === false &&
+      hiddenVerificationWindow?.focus === false &&
+      hiddenVerificationWindow?.skipTaskbar === true &&
+      hiddenVerificationWindow?.alwaysOnTop === false,
+    hiddenVerificationRunnerUsesDedicatedConfig:
+      hiddenVerificationRunnerSource.includes("tauri.dev.conf.json") &&
+      hiddenVerificationRunnerSource.includes("tauri.verification.conf.json") &&
+      hiddenVerificationRunnerSource.includes("visible -ne $false") &&
+      hiddenVerificationRunnerSource.includes("focus -ne $false") &&
+      hiddenVerificationRunnerSource.includes("skipTaskbar -ne $true") &&
+      hiddenVerificationRunnerSource.includes("alwaysOnTop -ne $false"),
+    packageExposesHiddenVerificationLane:
+      packageJson?.scripts?.["tauri:dev:verification"] ===
+      "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-tauri-verification-hidden.ps1",
     historicalIncidentsClassified: Array.isArray(historicalIncidentClosure.historicalIncidents),
     historicalIncidentsHaveCleanSuccessor: historicalIncidentClosure.closed === true,
   };
@@ -485,6 +511,19 @@ async function main() {
       exists: existsSync(DEV_SIDECAR_BUILD_SCRIPT),
       lockedExeRetryConfigured: checks.devSidecarBuilderHandlesLockedExe,
     },
+    automatedUiVerification: {
+      runnerPath: "scripts/run-tauri-verification-hidden.ps1",
+      configPath: "src-tauri/tauri.verification.conf.json",
+      packageScript: packageJson?.scripts?.["tauri:dev:verification"] ?? null,
+      window: hiddenVerificationWindow
+        ? {
+            visible: hiddenVerificationWindow.visible,
+            focus: hiddenVerificationWindow.focus,
+            skipTaskbar: hiddenVerificationWindow.skipTaskbar,
+            alwaysOnTop: hiddenVerificationWindow.alwaysOnTop,
+          }
+        : null,
+    },
     provenance: createEvidenceProvenance({
       root: ROOT,
       verifierPath: "scripts/verify-tauri-runtime-hygiene.mjs",
@@ -492,6 +531,8 @@ async function main() {
         "scripts/evidence-provenance.mjs",
         "package.json",
         "scripts/build-pty-sidecar-dev.ps1",
+        "scripts/run-tauri-verification-hidden.ps1",
+        "src-tauri/tauri.verification.conf.json",
         WORKSPACE_PROCESS_SNAPSHOT_PATH,
         ...logRuns.flatMap((run) => run.logs.map((log) => log.path)),
         ...PID_FILES,
