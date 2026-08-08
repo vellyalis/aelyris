@@ -1657,6 +1657,9 @@ pub enum ApiError {
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
 
+    #[error("telemetry unavailable: {0}")]
+    TelemetryUnavailable(String),
+
     #[error("continuity unavailable: {0}")]
     ContinuityUnavailable(String),
 
@@ -1762,6 +1765,9 @@ impl IntoResponse for ApiError {
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::ServiceUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "startup_not_admitted")
+            }
+            ApiError::TelemetryUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "telemetry_unavailable")
             }
             ApiError::ContinuityUnavailable(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "continuity_unavailable")
@@ -4070,11 +4076,31 @@ mod tests {
         let r = ApiError::ContinuityUnavailable("x".into()).into_response();
         assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
 
+        let r = ApiError::TelemetryUnavailable("x".into()).into_response();
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+
         let r = ApiError::ContinuityEvent(crate::event_bus::EventBusError::CursorOutOfRange {
             after_seq: 2,
             high_water_seq: 1,
         })
         .into_response();
         assert_eq!(r.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn telemetry_unavailable_has_a_distinct_machine_code() {
+        use axum::response::IntoResponse;
+
+        let response =
+            ApiError::TelemetryUnavailable("provider facts unknown".into()).into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read error body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("JSON body");
+        assert_eq!(value["code"], "telemetry_unavailable");
+        assert!(value["error"]
+            .as_str()
+            .is_some_and(|message| message.contains("provider facts unknown")));
     }
 }

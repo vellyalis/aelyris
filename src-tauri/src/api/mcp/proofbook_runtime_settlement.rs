@@ -102,9 +102,9 @@ fn rejection_code(error: &ApiError) -> &'static str {
         ApiError::NotFound(_) => "proofbook_runtime_settlement_not_found",
         ApiError::Conflict(_) => "proofbook_runtime_settlement_conflict",
         ApiError::RateLimited => "proofbook_runtime_settlement_rate_limited",
-        ApiError::ServiceUnavailable(_) | ApiError::ContinuityUnavailable(_) => {
-            "proofbook_runtime_settlement_unavailable"
-        }
+        ApiError::ServiceUnavailable(_)
+        | ApiError::TelemetryUnavailable(_)
+        | ApiError::ContinuityUnavailable(_) => "proofbook_runtime_settlement_unavailable",
         ApiError::CommandRiskBlocked(_)
         | ApiError::TerminalWriteRejected(_, _)
         | ApiError::ContinuityEvent(_) => "proofbook_runtime_settlement_guard_rejected",

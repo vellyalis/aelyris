@@ -120,9 +120,9 @@ fn rejection_code(error: &ApiError) -> &'static str {
         ApiError::Forbidden(_) => "session_lifecycle_forbidden",
         ApiError::Unauthorized => "session_lifecycle_unauthorized",
         ApiError::RateLimited => "session_lifecycle_rate_limited",
-        ApiError::ServiceUnavailable(_) | ApiError::ContinuityUnavailable(_) => {
-            "session_lifecycle_unavailable"
-        }
+        ApiError::ServiceUnavailable(_)
+        | ApiError::TelemetryUnavailable(_)
+        | ApiError::ContinuityUnavailable(_) => "session_lifecycle_unavailable",
         ApiError::CommandRiskBlocked(_)
         | ApiError::TerminalWriteRejected(_, _)
         | ApiError::ContinuityEvent(_) => "session_lifecycle_guard_rejected",

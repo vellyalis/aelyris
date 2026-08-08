@@ -13,6 +13,7 @@ const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
 const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
 const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
+const mcpMissionRunNext = read("src-tauri/src/api/mcp/mission_run_next.rs");
 const mcpMissionReviewSettlement = read(
   "src-tauri/src/api/mcp/mission_review_settlement.rs",
 );
@@ -24,6 +25,7 @@ const apiMcp = [
   mcpOrchestratorStep,
   mcpMissionContinuity,
   mcpMissionPlanning,
+  mcpMissionRunNext,
   mcpMissionReviewSettlement,
   mcpPendingDecisions,
 ].join("\n");
@@ -36,6 +38,7 @@ const taskCommands = read("src-tauri/src/ipc/task_commands.rs");
 const orchestratorIpc = read("src-tauri/src/ipc/orchestrator_commands.rs");
 const reviewIpc = read("src-tauri/src/ipc/review_commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
+const paneFleet = read("src-tauri/src/control/pane_fleet.rs");
 const autonomy = read("src-tauri/src/orchestrator/autonomy.rs");
 const gateRunner = read("src-tauri/src/control/gate_runner.rs");
 const fileOwnership = read("src-tauri/src/file_ownership/mod.rs");
@@ -65,6 +68,11 @@ const missionContinuityCatalog = sliceBetween(
 const missionPlanningCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.mission.plan"',
+  '"name": "aelyris.mission.run_next"',
+);
+const missionRunNextCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.run_next"',
   '"name": "aelyris.mission.review_and_settle"',
 );
 const missionReviewSettlementCatalog = sliceBetween(
@@ -97,6 +105,7 @@ const requiredTools = [
   "aelyris.orchestrator.step",
   "aelyris.mission.current",
   "aelyris.mission.plan",
+  "aelyris.mission.run_next",
   "aelyris.mission.review_and_settle",
   "aelyris.supervisor.health",
   "aelyris.event.recent",
@@ -297,6 +306,42 @@ const checks = [
       taskManager.includes("TaskRepo::persist_accepted_cockpit_plan("),
     detail:
       "mission.plan accepts only bounded Goal/context/repository identity, delegates the backend default planner into the existing atomic Mission/TaskGraph owner, and returns a value-minimized coordination view",
+  },
+  {
+    id: "mcp-mission-run-next-is-visible-honest-and-review-bounded",
+    ok:
+      apiMcp.includes('"aelyris.mission.run_next"') &&
+      missionRunNextCatalog.includes('"required": ["repoPath"]') &&
+      missionRunNextCatalog.includes('"additionalProperties": false') &&
+      !missionRunNextCatalog.includes('"activeAgents"') &&
+      !missionRunNextCatalog.includes('"tokensUsed"') &&
+      !missionRunNextCatalog.includes('"costUsd"') &&
+      !missionRunNextCatalog.includes('"runtimeSecs"') &&
+      !missionRunNextCatalog.includes('"taskId"') &&
+      !missionRunNextCatalog.includes('"model"') &&
+      !missionRunNextCatalog.includes('"command"') &&
+      !missionRunNextCatalog.includes('"reviewerId"') &&
+      !missionRunNextCatalog.includes('"verdict"') &&
+      !missionRunNextCatalog.includes('"mergeToken"') &&
+      !missionRunNextCatalog.includes('"workPacket"') &&
+      mcpMissionRunNext.includes("super::mission_continuity::read_current(") &&
+      mcpMissionRunNext.includes("admission_usage_snapshot(now_secs())") &&
+      mcpMissionRunNext.includes("crate::ipc::orchestrator_step(") &&
+      mcpMissionRunNext.includes("mission_run_next_budget_telemetry_unknown") &&
+      mcpMissionRunNext.includes("if !report.merged.is_empty()") &&
+      mcpMissionRunNext.includes("!report.settlement_pending.is_empty()") &&
+      mcpMissionRunNext.includes('"visiblePty": true') &&
+      mcpMissionRunNext.includes('"headlessDispatcherUsed": false') &&
+      mcpMissionRunNext.includes('"callerSuppliedUsage": false') &&
+      mcpMissionRunNext.includes('"reviewInvoked": false') &&
+      mcpMissionRunNext.includes('"mergeInvoked": false') &&
+      mcpMissionRunNext.includes('"settlementInvoked": false') &&
+      mcpMissionRunNext.includes('"terminalIdsExposed": false') &&
+      mcpMissionRunNext.includes('"rawUsageExposed": false') &&
+      paneFleet.includes("pub fn admission_usage_snapshot(") &&
+      paneFleet.includes("pub struct PaneFleetUsageSnapshot"),
+    detail:
+      "mission.run_next accepts only repository identity, reuses the visible cockpit PaneFleet step, derives exact agent/runtime admission, fails closed for configured unowned token/cost telemetry, and cannot cross or expose the separate review/merge/settlement boundary",
   },
   {
     id: "mcp-orchestrator-step-drives-real-loop",

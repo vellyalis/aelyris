@@ -1150,6 +1150,19 @@ fn build_tools_list_value() -> serde_json::Value {
         }
     }));
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.run_next",
+        "description": "Advance the exact current accepted cockpit Mission through the existing visible orchestrator_step / run_step_visible / PaneFleet owner. The authenticated caller supplies only repoPath and cannot supply active-agent/token/cost/runtime usage, task identity, model, command, branch, gate, reviewer, merge, or packet authority. Agent count and maximum runtime are derived from PaneFleet; configured token or monetary caps fail closed because PaneFleet does not own trustworthy provider billing telemetry. The operation stops at Review and returns only bounded task identities/counts, loop state, admission source/confidence, and explicit non-exposure boundaries—never paths, terminal ids, prompts, commands, provider output, raw usage, review evidence, OIDs, or packets.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath"],
+            "properties": {
+                "repoPath": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.mission.review_and_settle",
         "description": "Trigger the existing backend-owned Mission review, exact-OID merge, and immutable settlement path for one task already in Review. The authenticated Principal supplies only repository and task identity; it cannot supply a verdict, reviewer identity, candidate/target OID, merge token, gate result, WorkPacket, or MissionCompletionPacket. The fixed independent reviewer and existing Task/Review/Merge/settlement owners remain authoritative. The result exposes the exact reviewed candidate and packet identities needed for durable coordination, while authority audit stores only one-way repository/task/input digests and outcome flags—never paths, OIDs, review findings, or packet ids.",
         "safety": "GATED",

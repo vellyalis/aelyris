@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-47`.
-LAST COMPLETED SLICE: `AIO-46`.
-NEXT IMPLEMENTATION SLICE: `AIO-47`.
+ACTIVE SLICE: `AIO-48`.
+LAST COMPLETED SLICE: `AIO-47`.
+NEXT IMPLEMENTATION SLICE: `AIO-48`.
 
 ```yaml
 continuation_contract:
@@ -60,7 +60,8 @@ Current portfolio classification:
 | MCP backend-owned Mission review and settlement | **COMPLETE** | Authenticated AI supplies only repository/task identity; the existing fixed reviewer, exact-OID merge authority, packets, durable event, cleanup, and restart remain backend-owned |
 | MCP backend-owned Mission planning | **COMPLETE** | Authenticated AI supplies only repository, Goal, and bounded context; the backend default real-Codex planner atomically accepts the Mission/TaskGraph and restores it from the same SQLite authority |
 | MCP value-minimized Mission continuity | **COMPLETE** | A reconnecting AI supplies only repository identity and recovers the exact accepted Mission/plan plus bounded TaskGraph status from the existing SQLite-backed TaskManager, with structured absence and no raw planning values |
-| MCP backend-owned visible Mission run-next | **ACTIVE / AIO-47** | The remaining self-operation gap is the implementation tick: MCP still routes through the legacy headless step and accepts caller-reported active-agent usage instead of invoking the existing visible cockpit owner with backend-derived honest admission facts |
+| MCP backend-owned visible Mission run-next | **COMPLETE** | Authenticated MCP now reuses the existing visible cockpit PaneFleet step, derives exact agent/runtime admission in the backend, fails closed for configured unowned token/cost telemetry, and stops at Review |
+| MCP current-Mission-scoped review settlement | **ACTIVE / AIO-48** | The Mission-named settlement tool still contains a generic-task compatibility outcome (`merged_without_mission_settlement`); it must refuse non-current-Mission tasks before reviewer, candidate, or merge effects |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -1918,7 +1919,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` authenticated advancement of the current
 accepted Mission through the existing visible cockpit implementation-step owner.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one Mission-scoped MCP operation that accepts only `repoPath`, resolves the
   current accepted Mission through the existing TaskManager authority, and delegates
@@ -1941,6 +1942,51 @@ Status: **ACTIVE**.
   same visible worker the cockpit would dispatch, observe the task transition through
   the existing owners, and refuse caller-shaped or telemetry-unknown admission without
   weakening the separate review/settlement boundary.
+
+- Done: `aelyris.mission.run_next` accepts only `repoPath`, validates the exact current
+  accepted Mission, derives active-agent count and maximum runtime from the existing
+  PaneFleet, and delegates to the cockpit `orchestrator_step` / `run_step_visible`
+  owner. A typed `telemetry_unavailable` 503 distinguishes configured token/cost caps
+  whose facts PaneFleet does not own from startup admission failures.
+- Live proof on 2026-08-08 planned Mission
+  `019fe038-2f96-73c3-8b12-9e3aa8f77a67` / plan
+  `019fe038-2f96-73c3-8b12-9e4f7f8d7d74`, then dispatched task
+  `add-visible-message-test` into one real visible PTY. The run-next response returned
+  no terminal identity, path, prompt, command, provider output, raw usage, OID, review
+  evidence, or packet content; separate terminal inventory plus the durable
+  `agent_spawned` event proved the pane existed.
+- The task reached `Review`; another run-next returned `awaiting_review` with
+  `reviewInvoked:false`, `mergeInvoked:false`, and `settlementInvoked:false`. Caller-
+  supplied `activeAgents` failed schema validation, a configured token cap failed with
+  `telemetry_unavailable`, and 42 Principal-bound audit rows retained only digests,
+  aggregate counts, and boundary flags. Cleanup used the separate exact-OID
+  `mission.review_and_settle` authority and reclaimed the worktree.
+
+### AIO-48 — MCP Current-Mission-Scoped Review Settlement
+
+Capability target: `Product-Accessible` exact review and immutable settlement only for
+the task set owned by the current accepted cockpit Mission.
+Status: **ACTIVE**.
+
+- Before spawning the independent reviewer, freezing a candidate, reserving a merge,
+  or mutating Git, resolve the existing `mission.current` / TaskManager authority for
+  `repoPath`. Require the supplied `taskId` to be an exact member of that current
+  accepted Mission and currently `Review`. A manual/generic TaskGraph, stale Mission,
+  unrelated task, or non-Review status fails before any review or merge effect.
+- Keep `orchestrator_review_and_merge`, fixed reviewer, MergeIntentStore, TaskManager,
+  packet settlement, and EventBus as the only effect owners. Do not add a second
+  reviewer, Mission cache, task index, merge path, or rollback fiction.
+- Retire the Mission MCP compatibility outcome `merged_without_mission_settlement`.
+  This tool may return accepted immutable settlement, review rejection, or a typed
+  fail-closed error; a successful merge without WorkPacket/MissionCompletionPacket is
+  an invariant failure, never a successful Mission outcome.
+- Preserve caller-unshaped authority and current value minimization. The caller still
+  supplies only `repoPath` and `taskId`, and audit still excludes task/path/OID/review/
+  packet values while recording whether current-Mission preflight passed.
+- Done when a generic Review task is rejected with zero reviewer/merge effects, an
+  unrelated/stale Mission task is rejected before mutation, and an exact current
+  Mission Review task continues to complete through the existing reviewer, exact-OID
+  merge, immutable packets, durable completion event, and cleanup.
 
 ## Deferred After GMV
 
@@ -1987,9 +2033,9 @@ also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
 value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, MCP path-free worktree prediction
 `AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
-Mission planning `AIO-45`, and value-minimized Mission continuity `AIO-46` are also
-complete. `GMV-3` is Claim-Eligible; MCP backend-owned visible Mission run-next
-`AIO-47` is the active frontier.
+Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, and backend-
+owned visible Mission run-next `AIO-47` are also complete. `GMV-3` is Claim-Eligible;
+current-Mission-scoped review settlement `AIO-48` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

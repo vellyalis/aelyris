@@ -57,10 +57,13 @@ order and the authoritative specs. Key still-active specs include:
    through the existing planner and atomic Mission/TaskGraph owner; AIO-46 recovers the
    exact current Mission/plan/TaskGraph state after reconnect or restart without raw
    Goal, path, task description, branch, output, model, symbol, or packet values.
-   Product delivery is at AIO-47: authenticated MCP Mission advancement must use the
-   existing visible cockpit/PaneFleet step and backend-derived honest admission facts,
-   rather than the legacy headless dispatcher or caller-reported usage. Operator/
-   external certification remains pending without owning repository mutation.
+   AIO-47 now advances authenticated MCP Missions through the existing visible cockpit/
+   PaneFleet step with backend-derived honest admission facts and stops at Review.
+   Product delivery is at AIO-48: `mission.review_and_settle` must prove exact current-
+   Mission task membership and Review status before reviewer, candidate, or merge
+   effects, and may no longer treat a generic merge without immutable Mission packets
+   as success. Operator/external certification remains pending without owning
+   repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal

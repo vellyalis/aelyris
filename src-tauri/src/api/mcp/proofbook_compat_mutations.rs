@@ -89,9 +89,9 @@ fn rejection_code(error: &ApiError) -> &'static str {
         ApiError::NotFound(_) => "proofbook_compat_mutation_not_found",
         ApiError::Conflict(_) => "proofbook_compat_mutation_conflict",
         ApiError::RateLimited => "proofbook_compat_mutation_rate_limited",
-        ApiError::ServiceUnavailable(_) | ApiError::ContinuityUnavailable(_) => {
-            "proofbook_compat_mutation_unavailable"
-        }
+        ApiError::ServiceUnavailable(_)
+        | ApiError::TelemetryUnavailable(_)
+        | ApiError::ContinuityUnavailable(_) => "proofbook_compat_mutation_unavailable",
         ApiError::CommandRiskBlocked(_)
         | ApiError::TerminalWriteRejected(_, _)
         | ApiError::ContinuityEvent(_) => "proofbook_compat_mutation_guard_rejected",

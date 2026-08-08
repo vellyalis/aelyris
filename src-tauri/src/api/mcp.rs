@@ -14,6 +14,7 @@ mod fleet_status;
 mod mission_continuity;
 mod mission_planning;
 mod mission_review_settlement;
+mod mission_run_next;
 mod mux_topology;
 mod orchestrator_step;
 mod pending_decisions;
@@ -192,7 +193,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. For deliberately manual graphs, context.set then task.create/worktree.create remain available as lower-level operations. (2) Call orchestrator.step repeatedly with {repoPath, activeAgents}: finished agents move to Review, failed agents recover within bounded budgets, and ready tasks spawn; this tool never accepts review verdicts and never merges. (3) For a task already in Review, call mission.review_and_settle with only {repoPath, taskId}. The backend freezes and revalidates the candidate, runs the fixed independent reviewer, consumes the exact-OID merge authority, and mints settlement packets. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. After reconnect or restart, call mission.current with only {repoPath} to recover the exact accepted Mission/plan identity plus value-minimized task statuses from the SQLite-backed TaskManager; it never invokes a planner or reads volatile Event Bus state. (2) Advance that Mission with mission.run_next using only {repoPath}. It reuses the cockpit's visible PaneFleet step, derives agent/runtime admission from backend owners, fails closed when a configured budget axis lacks trustworthy telemetry, and stops at Review. The caller cannot supply usage, task identity, model, command, gate, reviewer, merge, or packet authority. orchestrator.step remains a lower-level headless/manual graph operation, not the supported Mission path. (3) For a task already in Review, call mission.review_and_settle with only {repoPath, taskId}. The backend freezes and revalidates the candidate, runs the fixed independent reviewer, consumes the exact-OID merge authority, and mints settlement packets. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
 
 fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
@@ -321,7 +322,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 92] = [
+    const FROZEN_A64_VERBS: [&str; 93] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -374,6 +375,7 @@ mod tests {
         "aelyris.orchestrator.step",
         "aelyris.mission.current",
         "aelyris.mission.plan",
+        "aelyris.mission.run_next",
         "aelyris.mission.review_and_settle",
         "aelyris.supervisor.health",
         "aelyris.event.recent",
@@ -4226,6 +4228,102 @@ mod tests {
         assert_eq!(
             schema_error["error"]["schema_violation"]["unknown"],
             serde_json::json!(["missionId"])
+        );
+    }
+
+    #[test]
+    fn mcp_mission_run_next_is_visible_caller_unshaped_and_review_bounded() {
+        use crate::pty::PtyManager;
+
+        let schema =
+            input_schema_for_tool_ref("aelyris.mission.run_next").expect("Mission run-next schema");
+        assert_eq!(schema["required"], serde_json::json!(["repoPath"]));
+        assert_eq!(schema["additionalProperties"], false);
+        let properties = schema["properties"].as_object().expect("schema properties");
+        assert_eq!(
+            properties.keys().cloned().collect::<BTreeSet<_>>(),
+            ["repoPath".to_string()].into_iter().collect()
+        );
+        assert_eq!(properties["repoPath"]["maxLength"], 4096);
+        for forbidden in [
+            "activeAgents",
+            "tokensUsed",
+            "costUsd",
+            "runtimeSecs",
+            "taskId",
+            "model",
+            "command",
+            "branch",
+            "gates",
+            "reviewerId",
+            "verdict",
+            "mergeToken",
+            "workPacket",
+            "missionCompletionPacket",
+        ] {
+            assert!(properties.get(forbidden).is_none());
+        }
+
+        let tools = tools_list_value();
+        let tool = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.mission.run_next")
+            .expect("Mission run-next tool");
+        assert_eq!(tool["safety"], "GATED");
+        let description = tool["description"].as_str().unwrap();
+        for required in [
+            "visible orchestrator_step",
+            "PaneFleet",
+            "stops at Review",
+            "configured token or monetary caps fail closed",
+            "never paths, terminal ids, prompts, commands",
+        ] {
+            assert!(
+                description.contains(required),
+                "description missing {required}"
+            );
+        }
+
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("test-token"),
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(matches!(
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "mission-run-next-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.run_next".to_string(),
+                    arguments: serde_json::json!({ "repoPath": "C:/repo" }),
+                },
+            )),
+            Err(ApiError::Internal(message)) if message.contains("task graph is not attached")
+        ));
+
+        let Json(schema_error) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "mission-run-next-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.run_next".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": "C:/repo",
+                        "activeAgents": 0,
+                    }),
+                },
+            ))
+            .expect("schema rejection is structured");
+        assert_eq!(schema_error["ok"], false);
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["verb"],
+            "aelyris.mission.run_next"
+        );
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["activeAgents"])
         );
     }
 

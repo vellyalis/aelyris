@@ -132,6 +132,32 @@ pub struct PaneFleet {
     runs: Arc<Mutex<HashMap<String, PaneRun>>>,
 }
 
+/// Exact admission facts the visible runtime can own without consulting the
+/// frontend or inferring provider billing. A tracked pane remains counted until
+/// the loop polls and removes it, which is deliberately conservative at a
+/// concurrency boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneFleetUsageSnapshot {
+    pub active_agents: usize,
+    pub runtime_secs: u64,
+}
+
+fn usage_snapshot_from_started_at(
+    started_at: impl IntoIterator<Item = u64>,
+    now: u64,
+) -> PaneFleetUsageSnapshot {
+    let mut active_agents = 0usize;
+    let mut runtime_secs = 0u64;
+    for started_at in started_at {
+        active_agents = active_agents.saturating_add(1);
+        runtime_secs = runtime_secs.max(now.saturating_sub(started_at));
+    }
+    PaneFleetUsageSnapshot {
+        active_agents,
+        runtime_secs,
+    }
+}
+
 impl PaneFleet {
     pub fn new(pty: PtyManager) -> Self {
         Self {
@@ -321,6 +347,17 @@ impl PaneFleet {
             .collect();
         identities.sort_by(|left, right| left.attempt_id.cmp(&right.attempt_id));
         identities
+    }
+
+    /// Exact visible-runtime usage available for admission without caller
+    /// telemetry. Token and monetary usage are intentionally absent: those
+    /// values are provider/session telemetry, not facts owned by PaneFleet.
+    pub fn admission_usage_snapshot(&self, now: u64) -> PaneFleetUsageSnapshot {
+        let runs = self
+            .runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        usage_snapshot_from_started_at(runs.values().map(|run| run.started_at), now)
     }
 
     /// Completion sensor (BR9): which dispatched panes finished since the last
@@ -592,6 +629,29 @@ mod tests {
             output_fallback: OutputFallbackState::default(),
             execution_identity: None,
         }
+    }
+
+    #[test]
+    fn pane_fleet_usage_snapshot_is_exact_and_conservative() {
+        let empty = usage_snapshot_from_started_at([], 100);
+        assert_eq!(
+            empty,
+            PaneFleetUsageSnapshot {
+                active_agents: 0,
+                runtime_secs: 0,
+            }
+        );
+
+        // Every tracked run occupies a concurrency slot until the loop polls it.
+        // Runtime follows the cockpit cost-meter contract: maximum live age.
+        let occupied = usage_snapshot_from_started_at([90, 70], 100);
+        assert_eq!(
+            occupied,
+            PaneFleetUsageSnapshot {
+                active_agents: 2,
+                runtime_secs: 30,
+            }
+        );
     }
 
     #[test]

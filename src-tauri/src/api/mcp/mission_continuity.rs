@@ -106,6 +106,11 @@ fn found_projection(
         .into_iter()
         .map(|task| (task.id.clone(), task))
         .collect::<HashMap<_, _>>();
+    if tasks_by_id.len() != planned.len() {
+        return Err(ApiError::Conflict(
+            "current TaskGraph contains tasks outside the accepted cockpit Mission".to_string(),
+        ));
+    }
     let mut tasks = Vec::with_capacity(planned.len());
     let mut status_counts = BTreeMap::<String, usize>::new();
     for identity in planned {
@@ -166,7 +171,7 @@ fn found_projection(
     }))
 }
 
-fn read_current(state: &ApiState, repo_path: &str) -> ApiResult<serde_json::Value> {
+pub(super) fn read_current(state: &ApiState, repo_path: &str) -> ApiResult<serde_json::Value> {
     let tasks = state.task_manager.as_ref().ok_or_else(|| {
         ApiError::Internal("task graph is not attached to this MCP process".to_string())
     })?;
