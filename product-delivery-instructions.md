@@ -3,10 +3,10 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `GMV CLAIM CONFIRMATION`.
-ACTIVE SLICE: `GMV-3`.
-LAST COMPLETED SLICE: `AIO-43`.
-NEXT IMPLEMENTATION SLICE: `GMV-3`.
+CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
+ACTIVE SLICE: `AIO-45`.
+LAST COMPLETED SLICE: `AIO-44`.
+NEXT IMPLEMENTATION SLICE: `AIO-45`.
 
 ```yaml
 continuation_contract:
@@ -36,9 +36,10 @@ path. They do not precede it. This is not a new orchestration engine: `plan_buil
 `orchestrator_step`, TaskGraph, PaneFleet, worktree, PTY, review, and settlement
 remain the existing owners.
 
-The finite **General Mission Vertical** (`GMV-0` through `GMV-3`) remains the
-completed repository foundation for this post-GMV product-access phase; the pending
-real-provider confirmation changes claim eligibility, not its implementation owner.
+The finite **General Mission Vertical** (`GMV-0` through `GMV-3`) is now complete and
+Claim-Eligible. The active post-GMV phase closes the remaining supported AI self-
+operation path over those existing owners; it does not introduce another Mission,
+review, merge, settlement, TaskGraph, or runtime engine.
 
 ## Portfolio Reset  E2026-08-04
 
@@ -55,7 +56,9 @@ Current portfolio classification:
 | --- | --- | --- |
 | Cockpit goal -> plan -> visible run -> review -> merge | **COMPLETE** | Live exercised through the supported cockpit path on 2026-08-04 |
 | Durable Mission binding and restart | **COMPLETE** | Goal, immutable planner identity, TaskGraph, branches/models/symbol intents, and mutable status restore from one SQLite authority |
-| Exact-OID Mission settlement | **REPOSITORY COMPLETE / CLAIM CHECK PENDING** | Deterministic end-to-end path passed; real Codex behavior remains externally blocked until 2026-08-08 |
+| Exact-OID Mission settlement | **COMPLETE / CLAIM-ELIGIBLE** | Real Codex planned and implemented through visible PTY; fixed independent review accepted the frozen candidate; exact-OID merge, both immutable packets, durable completion, worktree reclamation, and same-SQLite restart passed on 2026-08-08 |
+| MCP backend-owned Mission review and settlement | **COMPLETE** | Authenticated AI supplies only repository/task identity; the existing fixed reviewer, exact-OID merge authority, packets, durable event, cleanup, and restart remain backend-owned |
+| MCP backend-owned Mission planning | **ACTIVE / AIO-45** | The remaining supported self-operation gap is plain-language Goal -> accepted Mission/TaskGraph without caller-authored plan identity or Task packets |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -119,8 +122,8 @@ Current portfolio classification:
 
 - `audit-remediation-instructions.md` owns only the continuing operator/external
   certification handoff; its repo repair lane is closed.
-- This work order is the sole repo-mutating product lane. `AIO-24` is complete; no
-  second repository lane is opened merely to wait for the GMV-3 provider quota.
+- This work order is the sole repo-mutating product lane. `GMV-3` and `AIO-44` are
+  complete; no second repository lane is opened for post-hoc evidence replay.
 - The hosted-fast required CI entry gate passed at `f72a61b3`, run `30876300708`.
 - Nightly/manual full-confidence verification and certification remain authoritative
   for release/public claims, but they do not make every bounded GMV slice wait idle.
@@ -248,23 +251,17 @@ Status: **COMPLETE**.
 
 Capability target: `Claim-Eligible` for the bounded Mission journey only.
 
-Repository implementation status: **COMPLETE** at `5461b86f`. The remaining
-Claim-Eligible transition is a live-provider confirmation, not another repository
-architecture phase. The local Codex account refused that confirmation on 2026-08-05
-because its usage window is limited until 2026-08-08; this external quota does not
-reopen settlement, CI, verifier, or framework work.
-
-The real-Codex confirmation remains externally blocked until the provider window
-reopens on 2026-08-08. The owner explicitly authorized bounded product/release polish
-during that wait, and `AIO-40` through `AIO-43` are now complete. A fresh local
-distribution
-build also exposed and repaired a release-packaging regression: Tauri no longer
-auto-discovers the feature-gated `aelyris-native` proof binary as a shipping target,
-and the canonical Windows wrapper now produces both unsigned NSIS and MSI artifacts
-without weakening the proof-only feature boundary. This repair does not grant signing,
-updater, installation, or release-readiness credit. The exact frontier remains
-to the existing `GMV-3` provider check; those polish slices do not substitute for,
-weaken, or manufacture its pending claim.
+Status: **COMPLETE / CLAIM-ELIGIBLE** on 2026-08-08. The real Codex provider probe
+passed with the visible-worker profile, then the supported isolated journey accepted
+Mission `019fdf7a-ff84-7240-ae22-8d37077828ad` and plan
+`019fdf7a-ff84-7240-ae22-8d4026bbbd3b`. The visible worker passed project gates and
+froze candidate `fd051d5c321172cb1f920b07b48577c1f58d1d7b`; the fixed independent
+`gpt-5.6-sol` reviewer accepted that exact candidate, which became target main.
+CompletedWorkPacket `019fdf95-5534-7872-9004-49ec1acc7476`,
+MissionCompletionPacket `019fdf95-5535-7e72-9f50-3974d8d43bd2`, the matching durable
+TaskCompleted event, clean target repository, reclaimed worktree, and same-SQLite
+restart all passed. The run exposed and repaired one production defect: the fixed
+reviewer now receives closed stdin and cannot wait indefinitely for EOF.
 
 On 2026-08-05 the ChatGPT controller also ran the existing fresh-profile journey
 with an isolated deterministic Codex-compatible provider double. That run exercised
@@ -273,8 +270,8 @@ OID-bound merge, immutable WorkPacket/MissionCompletionPacket settlement, durabl
 Event Bus, cleanup, and same-SQLite restart. It exposed and fixed a Windows identity
 bug where `C:\...` and `\\?\C:\...` named the same repository but were compared as
 raw strings. The deterministic run proves the Aelyris product plumbing and recovery
-path; it does **not** substitute for confirming real Codex model behavior after the
-provider quota reopens.
+path. The 2026-08-08 real-provider run now supplies the previously missing claim; the
+deterministic run remains complementary recovery evidence.
 
 - Invoke the existing exact-OID merge/acceptance and immutable settlement owners.
 - A successful agent self-report, file existence, or UI status cannot settle Mission.
@@ -1819,6 +1816,60 @@ Status: **COMPLETE**.
 - Done: compatibility callers can confirm that the shared Git owner accepted an exact
   branch for deterministic placement without receiving host filesystem locations.
 
+### AIO-44 — MCP Backend-Owned Mission Review And Settlement
+
+Capability target: `Product-Accessible` authenticated AI initiation of the existing
+independent review, exact-OID merge, and immutable Mission settlement path without
+granting review, merge, or packet authority to the caller.
+Status: **COMPLETE**.
+
+- Expose `aelyris.mission.review_and_settle` as one GATED MCP operation accepting only
+  `repoPath` and `taskId`. Do not accept a verdict, reviewer identity, candidate or
+  target OID, gate result, MergeIntent, merge token, WorkPacket, or
+  MissionCompletionPacket.
+- Delegate directly to the existing `orchestrator_review_and_merge` owner through the
+  live Tauri-managed Task, startup, Cost Manager, PaneFleet, Event Bus, ownership,
+  Context, MergeIntent, review, merge, and settlement states. Do not duplicate or
+  reconstruct the review/merge coordinator inside MCP.
+- Keep `aelyris.review.approve` and `aelyris.request_merge` retired. The authenticated
+  Principal may initiate the operation but cannot shape the independent reviewer or
+  exact-candidate binding.
+- Return the exact reviewed candidate, review outcome/reasons, merge and settlement
+  flags, and immutable packet identities needed for durable coordination. Authority
+  audit retains only the Principal plus one-way repository/task/input digests and
+  outcome flags; it stores no paths, task identity, OIDs, review contents, or packet
+  ids.
+- Done: an isolated real-Codex Mission reached Review, then MCP HTTP alone triggered
+  fixed `gpt-5.6-sol` acceptance of candidate
+  `59bc75f8fa6d149699d97836490ad451a90dcfb2`, exact-OID merge, CompletedWorkPacket
+  `019fdfb6-d11c-7b91-bb44-aa331b95a60b`, MissionCompletionPacket
+  `019fdfb6-d11d-79c2-aeb1-2e7adcbbc9f9`, durable completion, clean repository,
+  worktree reclamation, and same-SQLite restart. All caller-authority flags remained
+  false.
+
+### AIO-45 — MCP Backend-Owned Mission Planning
+
+Capability target: `Product-Accessible` authenticated plain-language Goal submission
+through the existing planner and atomic Mission/TaskGraph acceptance owner.
+Status: **ACTIVE**.
+
+- Add one MCP operation over the existing `plan_build`, Mission preview, and
+  TaskManager path. The caller may supply Goal, optional bounded context, and
+  repository identity; it may not supply Mission ID, plan ID, task ids, dependencies,
+  branches, outputs, model assignment, symbol intents, status, retry counters, or
+  acceptance packets.
+- Use the backend default planner profile unless an existing typed provider-selection
+  contract is deliberately reused. Do not allow arbitrary binary or command selection.
+- Preserve the existing self-correcting plan validation and atomic Mission plus
+  TaskGraph transaction. Planner failure remains a typed non-success; no hand-authored
+  fallback TaskGraph is created.
+- Return the accepted Mission identity and a bounded generated-task coordination view.
+  Audit stores Principal plus Goal/context/repository digests and aggregate counts,
+  never raw Goal/context, repository paths, prompts, plan JSON, or task packets.
+- Done when authenticated MCP can submit one isolated Goal, observe the backend-
+  generated accepted Mission/TaskGraph, and restart from the same SQLite authority
+  without a second planner or persistence owner.
+
 ## Deferred After GMV
 
 Fleet Briefing `FB-1`, low-risk approval batching `AB-1`, Honest Cost Meter `CM-1`,
@@ -1862,12 +1913,12 @@ pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inv
 `AIO-37` is also complete. MCP path-minimized worktree mutation results `AIO-38` are
 also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
 value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
-`AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, and MCP path-free worktree
-prediction `AIO-43` are also complete. The
-`GMV-3` live-provider claim confirmation is again the active frontier and remains
-externally blocked;
+`AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, MCP path-free worktree prediction
+`AIO-43`, and MCP backend-owned Mission review/settlement `AIO-44` are also complete.
+`GMV-3` is Claim-Eligible; MCP backend-owned Mission planning `AIO-45` is the active
+frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
-AI-authored review/merge shortcuts, secret-bearing Proofbook starts, broader input
+caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
 portfolio candidates.
 Proofbook product access remains explicitly bounded to the completed cockpit slices;
@@ -1880,9 +1931,9 @@ new framework program.
 
 - No new top-level verifier unless an existing gate cannot detect a named new failure
   mode; extend or replace an existing gate first.
-- Until GMV-3 is Claim-Eligible, no standalone docs-, verifier-, review-, state-,
-  or architecture-only commit is allowed. Such edits may accompany the product diff
-  that consumes them in the same slice.
+- No standalone docs-, verifier-, review-, state-, or architecture-only commit is
+  allowed while a product/runtime slice is active. Such edits may accompany only the
+  product diff that consumes them in the same slice.
 - The next two completed slices must change product/runtime behavior. A Critical
   regression may interrupt, but cleanup, policy polish, historical evidence refresh,
   and speculative architecture may not.

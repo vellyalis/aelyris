@@ -9,10 +9,19 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const api = read("src-tauri/src/api/mod.rs");
+const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
+const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
+const mcpMissionReviewSettlement = read(
+  "src-tauri/src/api/mcp/mission_review_settlement.rs",
+);
+const mcpPendingDecisions = read("src-tauri/src/api/mcp/pending_decisions.rs");
 const apiMcp = [
   read("src-tauri/src/api/mcp.rs"),
-  read("src-tauri/src/api/mcp/catalog.rs"),
+  mcpCatalog,
   read("src-tauri/src/api/mcp/dispatch.rs"),
+  mcpOrchestratorStep,
+  mcpMissionReviewSettlement,
+  mcpPendingDecisions,
 ].join("\n");
 const lib = read("src-tauri/src/lib.rs");
 const merge = read("src-tauri/src/control/merge.rs");
@@ -31,6 +40,22 @@ const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
 const symbolOwnership = read("src-tauri/src/symbol_ownership/mod.rs");
 const planner = read("src-tauri/src/task/planner.rs");
+const sliceBetween = (text, start, end) => {
+  const from = text.indexOf(start);
+  if (from < 0) return "";
+  const to = text.indexOf(end, from + start.length);
+  return to < 0 ? text.slice(from) : text.slice(from, to);
+};
+const orchestratorStepCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.orchestrator.step"',
+  '"name": "aelyris.event.recent"',
+);
+const missionReviewSettlementCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.review_and_settle"',
+  '"name": "aelyris.cost.set_caps"',
+);
 
 const requiredTools = [
   "aelyris.worktree.validate",
@@ -54,6 +79,7 @@ const requiredTools = [
   "aelyris.task.transition",
   "aelyris.orchestrator.plan",
   "aelyris.orchestrator.step",
+  "aelyris.mission.review_and_settle",
   "aelyris.supervisor.health",
   "aelyris.event.recent",
   "aelyris.event.by_channel",
@@ -143,13 +169,19 @@ const checks = [
       reviewIpc.includes("freeze_owned_worktree_candidate(") &&
       reviewIpc.includes("DetachedReviewWorktree::create(") &&
       orchestratorIpc.includes("pub async fn orchestrator_review_and_merge(") &&
-      orchestratorIpc.includes("review_bindings.insert(task_id.clone(), reviewed.binding)") &&
+      orchestratorIpc.includes("review_bindings.insert(task_id.clone(), binding)") &&
       loopPorts.includes("request_durable_intent_bound(") &&
       merge.includes("crate::git::perform_merge_bound(") &&
       merge.includes(".claim_for_merge(intent_id, now)") &&
-      gitMerge.includes("pub fn perform_merge_bound"),
+      gitMerge.includes("pub fn perform_merge_bound") &&
+      mcpMissionReviewSettlement.includes(
+        "crate::ipc::orchestrator_review_and_merge(",
+      ) &&
+      missionReviewSettlementCatalog.includes(
+        '"required": ["repoPath", "taskId"]',
+      ),
     detail:
-      "raw MCP approve is retired; the supported cockpit freezes outputs, reviews a clean exact candidate, then consumes its in-process binding through CAS-claimed OID-bound merge",
+      "raw MCP approve remains retired; cockpit and typed Mission MCP settlement both freeze outputs, run backend-owned independent review, and consume only the CAS-claimed exact-OID binding",
   },
   {
     id: "mcp-spawn-enforces-cost-gate",
@@ -193,7 +225,7 @@ const checks = [
     id: "mcp-orchestrator-step-drives-real-loop",
     ok:
       apiMcp.includes('"aelyris.orchestrator.step"') &&
-      apiMcp.includes("crate::control::loop_ports::run_step(") &&
+      mcpOrchestratorStep.includes("crate::control::loop_ports::run_step(") &&
       loopPorts.includes("pub fn run_step(") &&
       loopPorts.includes("fn poll_completions(&self) -> Completions {") &&
       loopPorts.includes("self.manager.reap()") &&
@@ -255,14 +287,46 @@ const checks = [
     id: "mcp-step-has-no-caller-gate-authority",
     ok:
       apiMcp.includes('"aelyris.orchestrator.step"') &&
-      apiMcp.includes("no longer accepts caller-authored review gates") === false &&
-      !apiMcp.includes('"gateCommands"') &&
-      !apiMcp.includes('"reviewerId"') &&
+      orchestratorStepCatalog.includes('"required": ["repoPath"]') &&
+      orchestratorStepCatalog.includes('"activeAgents"') &&
+      !orchestratorStepCatalog.includes('"gateCommands"') &&
+      !orchestratorStepCatalog.includes('"reviewerId"') &&
+      !orchestratorStepCatalog.includes('"verdict"') &&
       reviewIpc.includes("review::detect_gate_commands(detached.path())") &&
       reviewIpc.includes("review::review_branch(&input, review::spawn_run") &&
       gateRunner.includes("gate_results_digest"),
     detail:
       "MCP orchestrator.step exposes no reviewerId/gates/gateCommands; project gates and semantic review run only inside backend-owned exact-candidate review",
+  },
+  {
+    id: "mcp-mission-review-settlement-is-caller-unshaped",
+    ok:
+      apiMcp.includes('"aelyris.mission.review_and_settle"') &&
+      missionReviewSettlementCatalog.includes(
+        '"required": ["repoPath", "taskId"]',
+      ) &&
+      missionReviewSettlementCatalog.includes('"additionalProperties": false') &&
+      !missionReviewSettlementCatalog.includes('"verdict"') &&
+      !missionReviewSettlementCatalog.includes('"reviewerId"') &&
+      !missionReviewSettlementCatalog.includes('"candidateSourceOid"') &&
+      !missionReviewSettlementCatalog.includes('"mergeToken"') &&
+      !missionReviewSettlementCatalog.includes('"workPacket"') &&
+      mcpMissionReviewSettlement.includes(
+        "crate::ipc::orchestrator_review_and_merge(",
+      ) &&
+      mcpMissionReviewSettlement.includes('"callerSuppliedVerdict": false') &&
+      mcpMissionReviewSettlement.includes(
+        '"callerSuppliedCandidateOid": false',
+      ) &&
+      mcpMissionReviewSettlement.includes(
+        '"callerSuppliedReviewerIdentity": false',
+      ) &&
+      mcpMissionReviewSettlement.includes(
+        '"callerSuppliedMergeAuthority": false',
+      ) &&
+      mcpMissionReviewSettlement.includes('"callerSuppliedPacket": false'),
+    detail:
+      "mission.review_and_settle accepts only repository/task identity and delegates fixed review, exact-OID merge, and packet settlement to existing backend owners",
   },
   {
     id: "mcp-orchestrator-enforces-disjoint-lanes",

@@ -1122,6 +1122,20 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.review_and_settle",
+        "description": "Trigger the existing backend-owned Mission review, exact-OID merge, and immutable settlement path for one task already in Review. The authenticated Principal supplies only repository and task identity; it cannot supply a verdict, reviewer identity, candidate/target OID, merge token, gate result, WorkPacket, or MissionCompletionPacket. The fixed independent reviewer and existing Task/Review/Merge/settlement owners remain authoritative. The result exposes the exact reviewed candidate and packet identities needed for durable coordination, while authority audit stores only one-way repository/task/input digests and outcome flags—never paths, OIDs, review findings, or packet ids.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath", "taskId"],
+            "properties": {
+                "repoPath": { "type": "string" },
+                "taskId": { "type": "string" }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.cost.set_caps",
         "description": "Conflict-safe GATED update of the exact shared Cost Manager caps as the authenticated Principal. Requires the exact expectedCaps returned by cost.get_caps plus replacement caps; stale, validation, or persistence failure leaves the live owner unchanged. Null optional axes remain disabled, and authority evidence stores digests rather than cap values.",
         "safety": "GATED",

@@ -46,26 +46,26 @@ order and the authoritative specs. Key still-active specs include:
    Now/Next/Unlocks, Universal Agent Fabric, capability kernel, Chronicle,
    immutable work-unit packets and `MissionCompletionPacket`, reversible autonomy, governed learning,
    Attention Compiler, and post-release Apex direction. Its detailed design and
-   roadmap are adjacent. These are target authorities, not shipped-capability or
-   release-readiness claims. A9.6r1 repo repair completed at `f72a61b3`; product
-   delivery remains at `GMV-3` for live-provider claim confirmation. Repository
-   implementation completed at `5461b86f`, including exact-OID settlement,
-   immutable Task/Mission packets, crash-safe resumption, and private locality
-   boundaries under the existing TaskManager/Mission authorities. The supported cockpit
-   goal -> visible implementation -> exact-candidate independent review -> OID-bound
-   merge path is live and its accepted Goal/plan survives restart, while
-   the final live-provider confirmation is externally blocked by the local Codex
-   quota until 2026-08-08. Operator/external certification remains pending without
+   roadmap are adjacent. These are target authorities, not release-readiness claims.
+   A9.6r1 repo repair completed at `f72a61b3`; GMV-0 through GMV-3 are complete and
+   the bounded Mission journey became Claim-Eligible on 2026-08-08 through a real
+   Codex planner/visible worker, fixed independent review, exact-OID merge, immutable
+   Task/Mission packets, durable completion, worktree reclamation, and same-SQLite
+   restart. AIO-44 makes that existing backend-owned review/settlement path reachable
+   by authenticated MCP while accepting no caller-authored verdict, reviewer, OID,
+   merge authority, or packet. Product delivery is now at AIO-45: authenticated MCP
+   plain-language Goal submission through the existing planner and atomic Mission/
+   TaskGraph owner. Operator/external certification remains pending without owning
    repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal
    without becoming prerequisites of that first vertical.
 
-   Current delivery order is value-first: confirm the implemented bounded journey
-   when the provider window reopens, then perform portfolio selection. Native
-   migration, Remote Continuity, Proofbook product UI, and release-certification
-   work do not become automatic next phases.
+   Current delivery order remains value-first: close the supported AI self-operation
+   path over the existing Mission owners, then perform portfolio selection. Native
+   migration, Remote Continuity external exposure, broader Proofbook product UI, and
+   release-certification work do not become automatic next phases.
 
    Cross-face API/MCP security, identity, versioning, idempotency, cancellation,
    backpressure, evidence, migration, and adversarial acceptance are owned by

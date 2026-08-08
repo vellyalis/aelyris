@@ -4465,6 +4465,9 @@ pub(super) async fn dispatch_authorized(
             serde_json::json!({ "health": health })
         }
         "aelyris.orchestrator.step" => super::orchestrator_step::execute(&state, actor, &args)?,
+        "aelyris.mission.review_and_settle" => {
+            super::mission_review_settlement::execute(&state, actor, &args).await?
+        }
         "aelyris.event.recent" => {
             let bus = state.event_bus.as_ref().ok_or_else(|| {
                 ApiError::Internal("event bus is not attached to this process".to_string())
