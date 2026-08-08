@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EXTENSION = process.platform === "win32" ? ".exe" : "";
@@ -484,6 +485,22 @@ async function main() {
       killProcess(proc.child);
     }
     report.finishedAt = new Date().toISOString();
+    report.provenance = createEvidenceProvenance({
+      root: ROOT,
+      verifierPath: "scripts/verify-interactive-ai-cli-boundary.mjs",
+      inputPaths: [
+        "scripts/evidence-provenance.mjs",
+        "scripts/build-pty-sidecar.mjs",
+        "package.json",
+        "src-tauri/pty-server/Cargo.toml",
+        "src-tauri/pty-server/src/main.rs",
+        "src-tauri/src/api/mod.rs",
+        "src-tauri/src/startup_reconciliation.rs",
+        "src-tauri/src/pty/mod.rs",
+        SIDECAR,
+      ],
+      generatedAt: report.finishedAt,
+    });
     if (!report.ok && environmentBlockedReason(report)) {
       report.environmentBlockedArtifact = writeEnvironmentBlockedArtifact(report);
     } else {

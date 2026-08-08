@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join, resolve } from "node:path";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "tauri-runtime-hygiene.json");
@@ -445,9 +446,10 @@ async function main() {
     historicalIncidentsClassified: Array.isArray(historicalIncidentClosure.historicalIncidents),
     historicalIncidentsHaveCleanSuccessor: historicalIncidentClosure.closed === true,
   };
+  const generatedAt = new Date().toISOString();
   const report = {
     version: 1,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     ok: Object.values(checks).every(Boolean),
     status: Object.values(checks).every(Boolean) ? "pass" : "failed",
     checks,
@@ -483,6 +485,19 @@ async function main() {
       exists: existsSync(DEV_SIDECAR_BUILD_SCRIPT),
       lockedExeRetryConfigured: checks.devSidecarBuilderHandlesLockedExe,
     },
+    provenance: createEvidenceProvenance({
+      root: ROOT,
+      verifierPath: "scripts/verify-tauri-runtime-hygiene.mjs",
+      inputPaths: [
+        "scripts/evidence-provenance.mjs",
+        "package.json",
+        "scripts/build-pty-sidecar-dev.ps1",
+        WORKSPACE_PROCESS_SNAPSHOT_PATH,
+        ...logRuns.flatMap((run) => run.logs.map((log) => log.path)),
+        ...PID_FILES,
+      ],
+      generatedAt,
+    }),
   };
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`);

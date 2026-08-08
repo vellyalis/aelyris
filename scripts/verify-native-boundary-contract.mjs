@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = join(ROOT, ".codex-auto", "quality", "native-boundary-contract.json");
@@ -1303,10 +1304,52 @@ const checks = [
 ];
 
 const failures = checks.filter((item) => item.status !== "passed").map((item) => item.detail);
+const generatedAt = new Date().toISOString();
+const provenanceInputPaths = [
+  "scripts/evidence-provenance.mjs",
+  "package.json",
+  "src/features/terminal/NativeTerminalArea.tsx",
+  "src/features/terminal/TerminalCanvas.tsx",
+  "src/features/terminal/terminalMetrics.ts",
+  "src/features/terminal/hooks/useTerminalSelection.ts",
+  "src/features/terminal/keymap.ts",
+  "src/shared/lib/nativeClipboard.ts",
+  "src/features/settings/ShellIntegrationSection.tsx",
+  "src/shared/hooks/useKeyboardShortcuts.ts",
+  "src/shared/hooks/useEditableTargetGuard.ts",
+  "src/features/terminal/pane-tree/PaneTreeContainer.tsx",
+  "src/features/terminal/pane-tree/usePaneTree.ts",
+  "src/features/terminal/pane-tree/persistence.ts",
+  "src/features/terminal/hooks/useCanvasIME.ts",
+  "src/shared/hooks/useGitStatus.ts",
+  "src/shared/lib/fallbackTelemetry.ts",
+  "src/shared/lib/commandRecovery.ts",
+  "src/styles/global.css",
+  "src-tauri/Cargo.toml",
+  "src-tauri/src/term/native_input.rs",
+  "src-tauri/src/ipc/commands.rs",
+  "src-tauri/src/ipc/ime_commands.rs",
+  "src-tauri/src/lib.rs",
+  "src-tauri/src/api/mod.rs",
+  "src-tauri/src/bin/aelys.rs",
+  ...nativeProofSourcePaths,
+  "src-tauri/src/term/mod.rs",
+  "src-tauri/src/term/render_frame.rs",
+  "src-tauri/src/term/render_pipeline.rs",
+  "src-tauri/src/pty_sidecar.rs",
+  "src-tauri/src/ipc/interactive_commands.rs",
+  nativeInputArtifactPath,
+  interactiveBoundaryArtifactPath,
+  commandRecoveryArtifactPath,
+  aiCliLaunchPlannerArtifactPath,
+  muxLiveArtifactPath,
+  muxLiveProcessPreservationArtifactPath,
+  nativeClientArtifactPath,
+];
 const report = {
   ok: failures.length === 0,
   status: failures.length === 0 ? "pass" : "blocked",
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   summary: {
     checks: checks.length,
     passed: checks.length - failures.length,
@@ -1314,6 +1357,12 @@ const report = {
   },
   checks,
   blockers: failures,
+  provenance: createEvidenceProvenance({
+    root: ROOT,
+    verifierPath: "scripts/verify-native-boundary-contract.mjs",
+    inputPaths: provenanceInputPaths,
+    generatedAt,
+  }),
 };
 
 writeJsonAtomic(OUT, { version: 1, ...report });

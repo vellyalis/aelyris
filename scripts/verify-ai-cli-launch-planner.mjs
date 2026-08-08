@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const SOURCE = join(ROOT, "src", "shared", "lib", "aiCliLaunchPlanner.ts");
@@ -54,7 +55,34 @@ function mtimeMs(path) {
 
 function writeArtifact(report) {
   mkdirSync(dirname(OUT), { recursive: true });
-  writeFileSync(OUT, `${JSON.stringify({ ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
+  const finishedAt = new Date().toISOString();
+  writeFileSync(
+    OUT,
+    `${JSON.stringify(
+      {
+        ...report,
+        finishedAt,
+        provenance: createEvidenceProvenance({
+          root: ROOT,
+          verifierPath: "scripts/verify-ai-cli-launch-planner.mjs",
+          inputPaths: [
+            "scripts/evidence-provenance.mjs",
+            "package.json",
+            SOURCE,
+            REAL_PROBE,
+            NATIVE_INPUT_HOST,
+            IME_PROOF,
+            PROCESS_RECONNECT,
+            MUX_LIVE_PROCESS_PRESERVATION,
+            INTERACTIVE_BOUNDARY,
+          ],
+          generatedAt: finishedAt,
+        }),
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 async function loadPlanner() {

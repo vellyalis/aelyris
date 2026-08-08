@@ -3,6 +3,7 @@ import { dirname, relative, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const ROOT = resolve(process.cwd());
 const OUT = resolve(ROOT, ".codex-auto", "production-smoke", "command-recovery-contract.json");
@@ -15,7 +16,31 @@ const ENTRY_MODULES = [
 
 function writeReport(report) {
   mkdirSync(dirname(OUT), { recursive: true });
-  writeFileSync(OUT, `${JSON.stringify({ version: 1, ...report, finishedAt: new Date().toISOString() }, null, 2)}\n`);
+  const finishedAt = new Date().toISOString();
+  writeFileSync(
+    OUT,
+    `${JSON.stringify(
+      {
+        version: 1,
+        ...report,
+        finishedAt,
+        provenance: createEvidenceProvenance({
+          root: ROOT,
+          verifierPath: "scripts/verify-command-recovery-contract.mjs",
+          inputPaths: [
+            "scripts/evidence-provenance.mjs",
+            "package.json",
+            TEST,
+            ...ENTRY_MODULES,
+            ...(report.compiledModules ?? []),
+          ],
+          generatedAt: finishedAt,
+        }),
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function emitRecoveryCheck(name, value) {
