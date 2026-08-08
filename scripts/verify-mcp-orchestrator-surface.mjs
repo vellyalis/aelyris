@@ -14,6 +14,7 @@ const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
 const mcpMissionCompletion = read("src-tauri/src/api/mcp/mission_completion.rs");
 const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
 const mcpMissionHistory = read("src-tauri/src/api/mcp/mission_history.rs");
+const mcpMissionReplay = read("src-tauri/src/api/mcp/mission_replay_read.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionRunNext = read("src-tauri/src/api/mcp/mission_run_next.rs");
 const mcpMissionReviewSettlement = read(
@@ -28,6 +29,7 @@ const apiMcp = [
   mcpMissionCompletion,
   mcpMissionContinuity,
   mcpMissionHistory,
+  mcpMissionReplay,
   mcpMissionPlanning,
   mcpMissionRunNext,
   mcpMissionReviewSettlement,
@@ -72,6 +74,11 @@ const missionCompletionCatalog = sliceBetween(
 const missionHistoryCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.mission.history"',
+  '"name": "aelyris.mission.replay"',
+);
+const missionReplayCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.replay"',
   '"name": "aelyris.mission.current"',
 );
 const missionContinuityCatalog = sliceBetween(
@@ -120,6 +127,7 @@ const requiredTools = [
   "aelyris.mission.completion",
   "aelyris.mission.current",
   "aelyris.mission.history",
+  "aelyris.mission.replay",
   "aelyris.mission.plan",
   "aelyris.mission.run_next",
   "aelyris.mission.review_and_settle",
@@ -326,6 +334,29 @@ const checks = [
       taskManager.includes("TaskRepo::list_cockpit_mission_history("),
     detail:
       "mission.history accepts only repository identity plus a bounded limit, reads newest-first durable cockpit rows through the existing TaskManager/SQLite owner, derives completion only from immutable packets, and exposes no Goal/task/event/OID/packet payload",
+  },
+  {
+    id: "mcp-mission-replay-is-deterministic-read-only-and-value-minimized",
+    ok:
+      apiMcp.includes('"aelyris.mission.replay"') &&
+      missionReplayCatalog.includes('"required": ["repoPath"]') &&
+      missionReplayCatalog.includes('"additionalProperties": false') &&
+      missionReplayCatalog.includes('"accessMode": "observe-only"') &&
+      missionReplayCatalog.includes('"readOnly": true') &&
+      !missionReplayCatalog.includes('"missionId"') &&
+      !missionReplayCatalog.includes('"taskId"') &&
+      !missionReplayCatalog.includes('"eventId"') &&
+      !missionReplayCatalog.includes('"checkpointId"') &&
+      !missionReplayCatalog.includes('"restore"') &&
+      mcpMissionReplay.includes("crate::mission_replay::replay_current_mission(") &&
+      mcpMissionReplay.includes('"projectionSideEffectCount": 0') &&
+      mcpMissionReplay.includes('"rawReplayHashLogged": false') &&
+      mcpMissionReplay.includes('"taskPayloadExposed": false') &&
+      mcpMissionReplay.includes('"eventPayloadExposed": false') &&
+      mcpMissionReplay.includes('"packetIdentityExposed": false') &&
+      mcpMissionReplay.includes('"packetContentsExposed": false'),
+    detail:
+      "mission.replay accepts only repository identity, delegates once to the pure V2 replay builder, returns a stable hash and bounded counts, and exposes no raw Mission/task/event/OID/packet payload or recovery authority",
   },
   {
     id: "mcp-mission-current-is-value-minimized-and-restart-safe",

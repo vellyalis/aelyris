@@ -43,6 +43,7 @@ Aelyris treats that coordination layer as the product:
 - exact candidate binding and old-OID compare-and-swap merge;
 - immutable `CompletedWorkPacket` and `MissionCompletionPacket` evidence;
 - restart-safe current Mission, bounded history, and completion receipt;
+- a deterministic current-Mission replay hash and bounded durable-source summary with zero replay effects;
 - one Governance and audit boundary shared by the Cockpit and MCP control plane.
 
 The terminal, multiplexer, agent runtime, Mission authority, and evidence path are built for supervised multi-agent development rather than bolted onto invisible background jobs.

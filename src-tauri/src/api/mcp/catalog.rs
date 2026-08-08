@@ -1155,6 +1155,22 @@ fn build_tools_list_value() -> serde_json::Value {
         }
     }));
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.replay",
+        "description": "Read the deterministic V2 Mission replay hash for the exact current accepted cockpit Mission. The authenticated caller supplies only repoPath. The existing TaskManager, durable Event Bus, WorkExecutionAttempt, CompletedWorkPacket, and MissionCompletionPacket owners remain authoritative; no replay cache, second journal, second TaskGraph, second packet store, Git, PTY, provider, review, merge, settlement, Event ACK, or recovery effect is invoked. Returns exact Mission/plan identity, a stable replay hash, bounded source counts/frontier, and explicit zero-effect guarantees while excluding Goal/context, repository paths, Task/execution identities or payloads, event payloads, OIDs, review/evidence, packet identities, and packet contents.",
+        "safety": "FREE",
+        "accessMode": "observe-only",
+        "outputSensitivity": "value-minimized-coordination",
+        "readOnly": true,
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath"],
+            "properties": {
+                "repoPath": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.mission.current",
         "description": "Read the exact current accepted cockpit Mission and value-minimized TaskGraph coordination state for one repository after reconnect or restart. The authenticated caller supplies only repoPath and cannot shape Mission, plan, task, status, branch, model, packet, limit, or cursor identity. The existing SQLite-backed TaskManager remains the sole owner. Returns exact Mission/plan ids and revisions plus bounded task ids/statuses and status counts, but never raw Goal/request, repository path, planner prompt/response, task descriptions, dependency values, output paths, branch names, model assignments, symbol values, or packet contents. A repository with no accepted cockpit Mission returns an explicit structured not_found outcome rather than a synthetic empty Mission.",
         "safety": "FREE",

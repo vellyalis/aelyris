@@ -15,6 +15,7 @@ mod mission_completion;
 mod mission_continuity;
 mod mission_history;
 mod mission_planning;
+mod mission_replay_read;
 mod mission_review_settlement;
 mod mission_run_next;
 mod mux_topology;
@@ -353,7 +354,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 95] = [
+    const FROZEN_A64_VERBS: [&str; 96] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -407,6 +408,7 @@ mod tests {
         "aelyris.mission.completion",
         "aelyris.mission.current",
         "aelyris.mission.history",
+        "aelyris.mission.replay",
         "aelyris.mission.plan",
         "aelyris.mission.run_next",
         "aelyris.mission.review_and_settle",
@@ -4537,6 +4539,245 @@ mod tests {
         assert_eq!(
             schema_error["error"]["schema_violation"]["unknown"],
             serde_json::json!(["missionId"])
+        );
+    }
+
+    #[test]
+    fn mcp_mission_replay_is_deterministic_read_only_and_payload_free() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::event_bus::{AgentEvent, AgentEventKind, EventBus};
+        use crate::pty::PtyManager;
+        use crate::task::{Task, TaskManager};
+
+        let schema =
+            input_schema_for_tool_ref("aelyris.mission.replay").expect("Mission replay schema");
+        assert_eq!(schema["required"], serde_json::json!(["repoPath"]));
+        assert_eq!(schema["additionalProperties"], false);
+        let properties = schema["properties"].as_object().expect("schema properties");
+        assert_eq!(
+            properties.keys().cloned().collect::<BTreeSet<_>>(),
+            ["repoPath".to_string()].into_iter().collect()
+        );
+        assert_eq!(properties["repoPath"]["maxLength"], 4096);
+        for forbidden in [
+            "missionId",
+            "planId",
+            "taskId",
+            "attemptId",
+            "eventId",
+            "afterSeq",
+            "limit",
+            "checkpointId",
+            "replayHash",
+            "restore",
+            "settle",
+        ] {
+            assert!(properties.get(forbidden).is_none());
+        }
+
+        let tools = tools_list_value();
+        let tool = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.mission.replay")
+            .expect("Mission replay tool");
+        assert_eq!(tool["safety"], "FREE");
+        assert_eq!(tool["accessMode"], "observe-only");
+        assert_eq!(tool["readOnly"], true);
+        let description = tool["description"].as_str().unwrap();
+        for required in [
+            "deterministic V2 Mission replay hash",
+            "no replay cache, second journal, second TaskGraph, second packet store",
+            "zero-effect guarantees",
+            "excluding Goal/context",
+        ] {
+            assert!(
+                description.contains(required),
+                "description missing {required}"
+            );
+        }
+
+        let repository = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(repository.path()).unwrap();
+        let signature = git2::Signature::now("Replay MCP", "replay@example.invalid").unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "fixture", &tree, &[])
+            .unwrap();
+        let repo_path = repository.path().to_string_lossy().into_owned();
+        let goal = "AIO_V2_M1_RAW_GOAL_MUST_NOT_BE_RETURNED_OR_LOGGED";
+        let mut task = Task::new("replay-mcp-task", "Hidden replay task")
+            .with_branches("agent/replay-mcp-task", "main");
+        task.owner = Some("replay-implementer".to_string());
+        task.model = Some("codex".to_string());
+        task.outputs = vec!["src/private-replay-output.rs".to_string()];
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let tasks = Arc::new(TaskManager::new_durable());
+        tasks.attach_db(db.clone()).unwrap();
+        let (_, mission) = tasks
+            .submit_cockpit_plan(
+                goal,
+                vec![task],
+                &repo_path,
+                &uuid::Uuid::now_v7().to_string(),
+            )
+            .unwrap();
+        let events = Arc::new(EventBus::new_durable());
+        events.attach_db(db.clone());
+        events
+            .publish(AgentEvent::new(
+                AgentEventKind::TaskCreated,
+                serde_json::json!({ "id": "replay-mcp-task" }),
+            ))
+            .unwrap();
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("V2_M1_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+        )
+        .with_db(Some(db.clone()))
+        .with_task_manager(tasks.clone())
+        .with_event_bus(events.clone());
+        let task_snapshot = serde_json::to_value(tasks.list()).unwrap();
+        let event_frontier = events.frontier().unwrap();
+        let head_before = repo.head().unwrap().target().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let read = || {
+            let Json(envelope) = rt
+                .block_on(tools_call_as_actor(
+                    &state,
+                    "mission-replay-operator",
+                    ToolCallBody {
+                        name: "aelyris.mission.replay".to_string(),
+                        arguments: serde_json::json!({ "repoPath": repo_path }),
+                    },
+                ))
+                .expect("Mission replay read");
+            assert_eq!(envelope["ok"], true);
+            envelope["result"].clone()
+        };
+        let first = read();
+        let second = read();
+        assert_eq!(first["outcome"], "ok");
+        assert_eq!(first["found"], true);
+        assert_eq!(
+            first["replay"]["mission"]["missionId"],
+            mission.mission_definition.mission_id
+        );
+        assert_eq!(first["replay"]["mission"]["planId"], mission.plan_id);
+        assert_eq!(
+            first["replay"]["replayHash"],
+            second["replay"]["replayHash"]
+        );
+        assert_eq!(first["replay"]["replayHash"].as_str().unwrap().len(), 64);
+        assert_eq!(first["replay"]["source"]["taskCount"], 1);
+        assert_eq!(first["replay"]["source"]["durableEventCount"], 1);
+        assert_eq!(first["replay"]["guarantees"]["sideEffectCount"], 0);
+        assert_eq!(first["replay"]["guarantees"]["secondJournalUsed"], false);
+        assert_eq!(first["replay"]["guarantees"]["secondTaskGraphUsed"], false);
+        assert_eq!(
+            first["replay"]["guarantees"]["secondPacketStoreUsed"],
+            false
+        );
+        assert_eq!(first["replay"]["guarantees"]["replayCacheUsed"], false);
+        assert_eq!(first["exposure"]["taskPayloadExposed"], false);
+        assert_eq!(first["exposure"]["eventPayloadExposed"], false);
+        assert_eq!(first["exposure"]["packetIdentityExposed"], false);
+        assert_eq!(first["exposure"]["packetContentsExposed"], false);
+        let response_text = serde_json::to_string(&first).unwrap();
+        for hidden in [
+            goal,
+            repo_path.as_str(),
+            "Hidden replay task",
+            "replay-mcp-task",
+            "src/private-replay-output.rs",
+            "V2_M1_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+        ] {
+            assert!(!response_text.contains(hidden), "response exposed {hidden}");
+        }
+        assert_eq!(serde_json::to_value(tasks.list()).unwrap(), task_snapshot);
+        assert_eq!(events.frontier().unwrap(), event_frontier);
+        assert_eq!(repo.head().unwrap().target().unwrap(), head_before);
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_mission_replay_read".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read Mission replay audit");
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            assert_eq!(row.agent_id.as_deref(), Some("mission-replay-operator"));
+            assert_eq!(row.redacted_payload_json["status"], "accepted");
+            assert_eq!(row.redacted_payload_json["outcome"], "ok");
+            assert_eq!(row.redacted_payload_json["replayInvoked"], true);
+            assert_eq!(row.redacted_payload_json["projectionSideEffectCount"], 0);
+            assert_eq!(
+                row.redacted_payload_json["replayHashDigest"]
+                    .as_str()
+                    .unwrap()
+                    .len(),
+                64
+            );
+            assert_ne!(
+                row.redacted_payload_json["replayHashDigest"],
+                first["replay"]["replayHash"]
+            );
+            for flag in [
+                "repositoryPathLogged",
+                "goalOrContextLogged",
+                "missionIdentityLogged",
+                "planIdentityLogged",
+                "taskOrExecutionIdentityLogged",
+                "eventPayloadLogged",
+                "oidValuesLogged",
+                "reviewOrEvidenceLogged",
+                "packetIdentityLogged",
+                "packetContentsLogged",
+                "rawReplayHashLogged",
+            ] {
+                assert_eq!(row.redacted_payload_json[flag], false, "flag {flag}");
+            }
+            let audit_text = serde_json::to_string(&row).unwrap();
+            for hidden in [
+                goal,
+                repo_path.as_str(),
+                "replay-mcp-task",
+                "V2_M1_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+            ] {
+                assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+            }
+        }
+
+        let Json(schema_error) = rt
+            .block_on(tools_call_as_actor(
+                &state,
+                "mission-replay-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.replay".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path,
+                        "checkpointId": "caller-shaped",
+                    }),
+                },
+            ))
+            .expect("schema rejection is structured");
+        assert_eq!(schema_error["ok"], false);
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["verb"],
+            "aelyris.mission.replay"
+        );
+        assert_eq!(
+            schema_error["error"]["schema_violation"]["unknown"],
+            serde_json::json!(["checkpointId"])
         );
     }
 

@@ -100,9 +100,12 @@ aelyris.mission.run_next
 aelyris.mission.review_and_settle
 aelyris.mission.completion
 aelyris.mission.history
+aelyris.mission.replay
 ```
 
 caller が渡せるのは各段階に必要な bounded identity／Goal だけです。planner 選択、TaskGraph 権限、reviewer identity、verdict、candidate OID、merge 権限、packet 生成はバックエンドに残ります。
+
+`aelyris.mission.replay` は observation-only です。raw Task、execution、event、OID、review、packet payload を返さず、現在 Mission の deterministic replay hash、bounded durable-source count、zero-effect guarantee だけを返します。
 
 ## 正直な制約
 
