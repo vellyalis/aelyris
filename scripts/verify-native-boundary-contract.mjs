@@ -191,6 +191,56 @@ const nativeClientFresh =
       mtime("src-tauri/src/api/mod.rs"),
       mtime("src-tauri/src/pty_sidecar.rs"),
     );
+const nativeClientBoundaryCoreCheckValues = Object.values(nativeClientArtifact?.nativeBoundaryCore?.checks ?? {});
+const nativeClientBoundaryCoreFresh =
+  nativeClientArtifact?.nativeBoundaryCore?.schema === "aelyris.native.client-boundary-proof.v1" &&
+  nativeClientArtifact?.nativeBoundaryCore?.complete === true &&
+  nativeClientBoundaryCoreCheckValues.length === 9 &&
+  nativeClientBoundaryCoreCheckValues.every((value) => value === true) &&
+  mtime(nativeClientArtifactPath) + 5_000 >=
+    Math.max(
+      mtime("scripts/verify-native-client-spike.mjs"),
+      mtime("src-tauri/Cargo.toml"),
+      nativeProofSourceMtime,
+      mtime("src-tauri/src/term/mod.rs"),
+      mtime("src-tauri/src/term/render_frame.rs"),
+      mtime("src-tauri/src/term/render_pipeline.rs"),
+      mtime("src-tauri/src/api/mod.rs"),
+      mtime("src-tauri/src/pty_sidecar.rs"),
+    );
+const nativeClientBoundaryCoreAccepted =
+  nativeClientBoundaryCoreFresh &&
+  nativeClientArtifact?.nativeContract?.client?.process === "aelyris-native" &&
+  nativeClientArtifact?.nativeContract?.client?.uiBoundary === "no-webview" &&
+  nativeClientArtifact?.nativeContract?.claims?.webviewUsed === false &&
+  nativeClientArtifact?.nativeContract?.claims?.muxTruthSource === "daemon-api" &&
+  nativeClientArtifact?.nativeContract?.daemon?.instanceId === nativeClientArtifact?.directContract?.instanceId &&
+  nativeClientArtifact?.nativeWindow?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
+  nativeClientArtifact?.nativeWindow?.window?.nativeWindowCreated === true &&
+  nativeClientArtifact?.nativeWindow?.window?.layered === true &&
+  nativeClientArtifact?.nativeWindow?.window?.webviewUsed === false &&
+  nativeClientArtifact?.nativeRender?.source?.expectedFound === true &&
+  nativeClientArtifact?.nativeRender?.renderer?.terminalRenderer === "native-gdi-text-proof" &&
+  nativeClientArtifact?.nativeRender?.renderer?.nativeTextDrawn === true &&
+  nativeClientArtifact?.nativeRender?.renderer?.nonBlank === true &&
+  nativeClientArtifact?.nativeGridRender?.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
+  nativeClientArtifact?.nativeGridRender?.renderer?.terminalRenderer === "native-gdi-grid-proof" &&
+  nativeClientArtifact?.nativeGridRender?.renderer?.nativeCellGrid === true &&
+  nativeClientArtifact?.nativeGridRender?.renderer?.nonBlank === true &&
+  nativeClientArtifact?.nativePresentLoop?.presentLoop?.terminalRenderer === "native-win32-present-loop-proof" &&
+  nativeClientArtifact?.nativePresentLoop?.presentLoop?.presentLoop === true &&
+  nativeClientArtifact?.nativePresentLoop?.presentLoop?.nonBlank === true &&
+  nativeClientArtifact?.nativeList?.daemonInstanceId === nativeClientArtifact?.directContract?.instanceId &&
+  nativeClientArtifact?.nativeCapture?.containsMarker === true &&
+  Array.isArray(nativeClientArtifact?.nativeDetach?.paneLifecycles) &&
+  nativeClientArtifact.nativeDetach.paneLifecycles.every((lifecycle) => lifecycle === "detached") &&
+  Array.isArray(nativeClientArtifact?.nativeAttach?.paneLifecycles) &&
+  nativeClientArtifact.nativeAttach.paneLifecycles.every((lifecycle) => lifecycle !== "detached") &&
+  nativeClientArtifact?.checks?.includes?.("native-client-boundary-core-proof") &&
+  nativeClientArtifact?.checks?.includes?.("native-list-reads-mux-workspaces") &&
+  nativeClientArtifact?.checks?.includes?.("native-send-and-capture-roundtrip") &&
+  nativeClientArtifact?.checks?.includes?.("native-detach-updates-mux-graph") &&
+  nativeClientArtifact?.checks?.includes?.("native-attach-updates-mux-graph");
 
 const nativeInputCheckIds = new Set((nativeInputArtifact?.checks ?? []).map((item) => item?.id));
 const interactiveCliEntries = Array.isArray(interactiveBoundary?.checks?.clis) ? interactiveBoundary.checks.clis : [];
@@ -495,7 +545,8 @@ const checks = [
   ),
   check(
     "native-client-spike",
-    cargoToml.includes('name = "aelyris-native"') &&
+    nativeClientBoundaryCoreAccepted ||
+      (cargoToml.includes('name = "aelyris-native"') &&
       packageJson.includes('"verify:terminal:native-client"') &&
       aelyrisNative.includes('"aelyris.native.client.v1"') &&
       aelyrisNative.includes('"uiBoundary": "no-webview"') &&
@@ -1152,9 +1203,16 @@ const checks = [
       nativeClientArtifact?.checks?.includes?.("native-list-reads-mux-workspaces") &&
       nativeClientArtifact?.checks?.includes?.("native-send-and-capture-roundtrip") &&
       nativeClientArtifact?.checks?.includes?.("native-detach-updates-mux-graph") &&
-      nativeClientArtifact?.checks?.includes?.("native-attach-updates-mux-graph"),
+      nativeClientArtifact?.checks?.includes?.("native-attach-updates-mux-graph")),
     "aelyris-native exists as a Rust-native, no-WebView attaching client and live proof shows it uses the same mux daemon plus layered Win32 native window, native GDI text rendering, a Rust native render-frame contract, TermEngine-backed grid rendering, and a native present loop for list, send, capture, detach, and attach",
-    { artifact: nativeClientArtifactPath, fresh: nativeClientFresh },
+    {
+      artifact: nativeClientArtifactPath,
+      fresh: nativeClientBoundaryCoreFresh || nativeClientFresh,
+      coreAccepted: nativeClientBoundaryCoreAccepted,
+      aggregateFresh: nativeClientFresh,
+      overallStatus: nativeClientArtifact?.status ?? null,
+      laterFailure: nativeClientArtifact?.errors?.at?.(-1) ?? null,
+    },
   ),
   check(
     "sidecar-command-session-artifact",
@@ -1224,9 +1282,23 @@ const checks = [
       aiCliLaunchPlanner?.plan?.recommendedBackend === "sidecar-command-session" &&
       aiCliLaunchPlanner?.plan?.trace?.recommendedBackend === "sidecar-command-session" &&
       Array.isArray(aiCliLaunchPlanner?.plan?.trace?.preflightChecks) &&
-      aiCliLaunchPlanner.plan.trace.preflightChecks.every((item) => item?.status === "ready"),
-    "AI CLI launch planner refuses blind prompt-pasting until sidecar/native/clipboard/reconnect preflight is ready",
-    { artifact: aiCliLaunchPlannerArtifactPath },
+      aiCliLaunchPlanner.plan.trace.preflightChecks.every((item) => item?.status === "ready") &&
+      Array.isArray(aiCliLaunchPlanner?.plan?.trace?.promptContractChecks) &&
+      aiCliLaunchPlanner.plan.trace.promptContractChecks.every((item) => item?.status === "ready") &&
+      (aiCliLaunchPlanner?.plan?.status === "ready" ||
+        (aiCliLaunchPlanner?.status === "pass-guarded-launch-plan" &&
+          aiCliLaunchPlanner?.outcome === "guarded" &&
+          aiCliLaunchPlanner?.environmentReady === false &&
+          aiCliLaunchPlanner?.plan?.status === "blocked" &&
+          aiCliLaunchPlanner?.plan?.actionLabel === "Fix launch gate" &&
+          aiCliLaunchPlanner?.plan?.guardrailLabel === "Launch guard")),
+    "AI CLI launch planner prepares a sidecar launch only from complete preflight/prompt evidence and otherwise returns an explicit fail-closed launch guard",
+    {
+      artifact: aiCliLaunchPlannerArtifactPath,
+      status: aiCliLaunchPlanner?.status ?? null,
+      outcome: aiCliLaunchPlanner?.outcome ?? null,
+      environmentReady: aiCliLaunchPlanner?.environmentReady ?? null,
+    },
   ),
 ];
 

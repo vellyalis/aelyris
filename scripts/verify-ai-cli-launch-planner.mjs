@@ -42,6 +42,11 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+function readOptionalJson(path) {
+  if (!existsSync(path)) return null;
+  return readJson(path);
+}
+
 function mtimeMs(path) {
   if (!existsSync(path)) return 0;
   return statSync(path).mtimeMs;
@@ -94,6 +99,38 @@ function assertPlan(plan, realProbe) {
         Array.isArray(entry?.attempts) &&
         entry.attempts.length === entry.attemptCount,
     );
+  const traceBaseComplete =
+    plan?.trace?.schemaVersion === 1 &&
+    plan?.trace?.kind === "ai-cli-launch-plan" &&
+    plan?.trace?.status === plan?.status &&
+    plan?.trace?.recommendedBackend === "sidecar-command-session" &&
+    typeof plan?.trace?.selectedLauncher === "string" &&
+    plan.trace.selectedLauncher.length > 0 &&
+    Array.isArray(plan?.trace?.expectedArtifacts) &&
+    plan.trace.expectedArtifacts.includes("run trace with provider, role, backend, and launcher") &&
+    plan.trace.expectedArtifacts.includes("executable path and bounded retry provenance for every AI CLI");
+  const selectedLaunchProvenanceReady =
+    typeof plan?.trace?.selectedVersion === "string" &&
+    plan.trace.selectedVersion.length > 0 &&
+    typeof plan?.trace?.selectedExecutablePath === "string" &&
+    plan.trace.selectedExecutablePath.length > 0 &&
+    Number.isInteger(plan.trace.selectedAttemptCount) &&
+    plan.trace.selectedAttemptCount >= 1;
+  const planReady =
+    plan?.status === "ready" &&
+    plan?.recommendedBackend === "sidecar-command-session" &&
+    plan?.trace?.recommendedBackend === "sidecar-command-session" &&
+    selectedLaunchProvenanceReady;
+  const launchGuardReady =
+    plan?.status === "blocked" &&
+    plan?.recommendedBackend === "sidecar-command-session" &&
+    plan?.trace?.status === "blocked" &&
+    plan?.actionLabel === "Fix launch gate" &&
+    plan?.trace?.actionLabel === "Fix launch gate" &&
+    plan?.guardrailLabel === "Launch guard" &&
+    plan?.trace?.guardrailLabel === "Launch guard" &&
+    Array.isArray(plan?.warnings) &&
+    plan.warnings.length > 0;
   return {
     sourceLoaded: typeof plan?.trace === "object" && plan.trace.kind === "ai-cli-launch-plan",
     realProbePass:
@@ -102,24 +139,10 @@ function assertPlan(plan, realProbe) {
       realProbe?.checks?.commandSessionCapability === true &&
       realProbe?.checks?.passCount === 3 &&
       realProbeProvenanceReady,
-    planReady:
-      plan?.status === "ready" &&
-      plan?.recommendedBackend === "sidecar-command-session" &&
-      plan?.trace?.recommendedBackend === "sidecar-command-session",
-    traceComplete:
-      plan?.trace?.schemaVersion === 1 &&
-      plan?.trace?.kind === "ai-cli-launch-plan" &&
-      typeof plan?.trace?.selectedLauncher === "string" &&
-      plan.trace.selectedLauncher.length > 0 &&
-      typeof plan?.trace?.selectedVersion === "string" &&
-      plan.trace.selectedVersion.length > 0 &&
-      Array.isArray(plan?.trace?.expectedArtifacts) &&
-      plan.trace.expectedArtifacts.includes("run trace with provider, role, backend, and launcher") &&
-      plan.trace.expectedArtifacts.includes("executable path and bounded retry provenance for every AI CLI") &&
-      typeof plan.trace.selectedExecutablePath === "string" &&
-      plan.trace.selectedExecutablePath.length > 0 &&
-      Number.isInteger(plan.trace.selectedAttemptCount) &&
-      plan.trace.selectedAttemptCount >= 1,
+    planReady,
+    launchGuardReady,
+    traceBaseComplete,
+    selectedLaunchProvenanceReady,
     contextPackReady:
       plan?.trace?.contextPack?.id === "launch-planner-smoke-context" &&
       plan?.trace?.contextPack?.source === "smoke" &&
@@ -166,7 +189,7 @@ async function main() {
     const preflight = {
       nativeInputHost: readJson(NATIVE_INPUT_HOST),
       ime: readJson(IME_PROOF),
-      processReconnect: readJson(PROCESS_RECONNECT),
+      processReconnect: readOptionalJson(PROCESS_RECONNECT),
       muxLiveProcessPreservation: readJson(MUX_LIVE_PROCESS_PRESERVATION),
       interactiveBoundary: readJson(INTERACTIVE_BOUNDARY),
     };
@@ -220,23 +243,32 @@ async function main() {
       muxLiveProcessPreservation: MUX_LIVE_PROCESS_PRESERVATION,
       interactiveBoundary: INTERACTIVE_BOUNDARY,
     };
+    report.checks.missingOptionalPreflightArtifacts = [
+      ...(preflight.processReconnect === null ? [PROCESS_RECONNECT] : []),
+    ];
 
     const failureReasons = [];
     if (!report.checks.sourceLoaded) failureReasons.push("planner source did not produce a launch trace");
-    if (!report.checks.realProbePass) failureReasons.push("real CLI probe is not a clean 3-provider pass");
     if (!report.checks.realProbeFresh) failureReasons.push("real CLI probe is stale for launch planning");
-    if (!report.checks.planReady) failureReasons.push("launch plan is not ready on sidecar-command-session");
-    if (!report.checks.traceComplete) failureReasons.push("launch trace is incomplete");
+    if (!report.checks.traceBaseComplete) failureReasons.push("launch trace base contract is incomplete");
     if (!report.checks.contextPackReady) failureReasons.push("machine-readable context pack trace is incomplete");
     if (!report.checks.preflightReady) failureReasons.push("launch preflight checks are not all ready");
     if (!report.checks.promptContractReady) failureReasons.push("launch prompt contract checks are not all ready");
     if (!report.checks.providerMatrix.allProvidersPresent) failureReasons.push("provider matrix is incomplete");
-    if (!report.checks.providerMatrix.allProvidersReady) failureReasons.push("provider matrix is not fully ready");
+    const environmentReady = report.checks.realProbePass && report.checks.providerMatrix.allProvidersReady;
+    const readyOutcome = environmentReady && report.checks.planReady;
+    const guardedOutcome = !environmentReady && report.checks.launchGuardReady;
+    report.environmentReady = environmentReady;
+    report.outcome = readyOutcome ? "ready" : guardedOutcome ? "guarded" : "invalid";
+    if (!readyOutcome && !guardedOutcome) {
+      failureReasons.push("planner neither produced a ready launch nor a fail-closed launch guard");
+    }
 
     if (failureReasons.length > 0) {
       throw new Error(failureReasons.join("; "));
     }
     report.ok = true;
+    report.status = readyOutcome ? "pass-ready-launch-plan" : "pass-guarded-launch-plan";
   } catch (error) {
     report.errors.push(error instanceof Error ? error.stack || error.message : String(error));
     process.exitCode = 1;

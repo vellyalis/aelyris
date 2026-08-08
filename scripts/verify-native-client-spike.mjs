@@ -490,6 +490,7 @@ async function main() {
     nativeCapture: null,
     nativeAttach: null,
     nativeDetach: null,
+    nativeBoundaryCore: null,
     sidecarOutput: null,
   };
   let daemon = null;
@@ -564,6 +565,32 @@ async function main() {
       textTail: nativeCapture.capture.text.slice(-300),
     };
     report.checks.push("native-send-and-capture-roundtrip");
+
+    const nativeDetach = await runNative(base, ["detach", workspaceId]);
+    report.nativeDetach = {
+      workspaceId,
+      paneLifecycles: paneRecords(nativeDetach.graph).map((pane) => pane.lifecycle).sort(),
+    };
+    assert(
+      paneRecords(nativeDetach.graph).every((pane) => pane.lifecycle === "detached"),
+      "native detach should mark panes detached through mux graph",
+    );
+    report.checks.push("native-detach-updates-mux-graph");
+
+    const nativeAttach = await runNative(base, ["attach", workspaceId]);
+    report.nativeAttach = {
+      workspaceId,
+      paneLifecycles: paneRecords(nativeAttach.graph).map((pane) => pane.lifecycle).sort(),
+      ptyIds: paneRecords(nativeAttach.graph)
+        .map((pane) => pane.pty?.terminalId)
+        .filter(Boolean)
+        .sort(),
+    };
+    assert(
+      paneRecords(nativeAttach.graph).every((pane) => isLiveAttachedPane(pane)),
+      "native attach should restore live non-detached PTY bindings through mux graph",
+    );
+    report.checks.push("native-attach-updates-mux-graph");
 
     const nativeRender = await runNative(base, [
       "render-proof",
@@ -757,6 +784,63 @@ async function main() {
     writeJsonAtomic(join(root, ".codex-auto", "quality", "native-present-loop-proof.json"), nativePresentLoop);
     report.checks.push("native-present-loop-proof");
     report.checks.push("native-present-loop-nonblank-frames");
+
+    report.nativeBoundaryCore = {
+      schema: "aelyris.native.client-boundary-proof.v1",
+      complete: true,
+      daemonInstanceId: directContract.instanceId,
+      workspaceId,
+      checks: {
+        sameDaemon: [
+          nativeContract.daemon?.instanceId,
+          nativeWindow.daemon?.instanceId,
+          nativeList.daemon?.instanceId,
+          nativeRender.daemon?.instanceId,
+          nativeGridRender.daemon?.instanceId,
+          nativePresentLoop.daemon?.instanceId,
+        ].every((instanceId) => instanceId === directContract.instanceId),
+        noWebViewBoundary:
+          nativeContract.client?.uiBoundary === "no-webview" &&
+          nativeContract.claims?.webviewUsed === false &&
+          nativeWindow.window?.webviewUsed === false &&
+          nativeRender.renderer?.webviewUsed === false &&
+          nativeGridRender.renderer?.webviewUsed === false &&
+          nativePresentLoop.presentLoop?.webviewUsed === false,
+        nativeWindow:
+          nativeWindow.window?.nativeWindowCreated === true &&
+          nativeWindow.window?.layered === true &&
+          nativeWindow.window?.alpha === 218,
+        listReadsWorkspace:
+          Array.isArray(nativeList.workspaces) && nativeList.workspaces.some((workspace) => workspace.id === workspaceId),
+        sendCaptureRoundtrip:
+          report.nativeCapture?.sessionId === workspaceId && report.nativeCapture?.containsMarker === true,
+        detachAttachRoundtrip:
+          paneRecords(nativeDetach.graph).every((pane) => pane.lifecycle === "detached") &&
+          paneRecords(nativeAttach.graph).every((pane) => isLiveAttachedPane(pane)),
+        nativeTextRender:
+          nativeRender.source?.expectedFound === true &&
+          nativeRender.renderer?.terminalRenderer === "native-gdi-text-proof" &&
+          nativeRender.renderer?.nativeTextDrawn === true &&
+          nativeRender.renderer?.nonBlank === true,
+        nativeGridRender:
+          nativeGridRender.source?.expectedFound === true &&
+          nativeGridRender.renderFrame?.schema === "aelyris.native.render-frame.v1" &&
+          nativeGridRender.renderer?.terminalRenderer === "native-gdi-grid-proof" &&
+          nativeGridRender.renderer?.nativeCellGrid === true &&
+          nativeGridRender.renderer?.nonBlank === true,
+        nativePresentLoop:
+          nativePresentLoop.source?.expectedFound === true &&
+          nativePresentLoop.presentLoop?.terminalRenderer === "native-win32-present-loop-proof" &&
+          nativePresentLoop.presentLoop?.presentLoop === true &&
+          nativePresentLoop.presentLoop?.framesPresented >= 2 &&
+          nativePresentLoop.presentLoop?.nonBlank === true,
+      },
+    };
+    assert(
+      Object.values(report.nativeBoundaryCore.checks).every((value) => value === true),
+      `native client boundary core incomplete: ${JSON.stringify(report.nativeBoundaryCore.checks)}`,
+    );
+    report.checks.push("native-client-boundary-core-proof");
 
     const nativeGpuRender = await runNative(base, [
       "gpu-render-proof",
@@ -1891,32 +1975,6 @@ async function main() {
     report.checks.push("native-primary-shell-promotion-proof");
     report.checks.push("native-primary-shell-window-proof");
     report.checks.push("react-webview-compatibility-only-proof");
-
-    const nativeDetach = await runNative(base, ["detach", workspaceId]);
-    report.nativeDetach = {
-      workspaceId,
-      paneLifecycles: paneRecords(nativeDetach.graph).map((pane) => pane.lifecycle).sort(),
-    };
-    assert(
-      paneRecords(nativeDetach.graph).every((pane) => pane.lifecycle === "detached"),
-      "native detach should mark panes detached through mux graph",
-    );
-    report.checks.push("native-detach-updates-mux-graph");
-
-    const nativeAttach = await runNative(base, ["attach", workspaceId]);
-    report.nativeAttach = {
-      workspaceId,
-      paneLifecycles: paneRecords(nativeAttach.graph).map((pane) => pane.lifecycle).sort(),
-      ptyIds: paneRecords(nativeAttach.graph)
-        .map((pane) => pane.pty?.terminalId)
-        .filter(Boolean)
-        .sort(),
-    };
-    assert(
-      paneRecords(nativeAttach.graph).every((pane) => isLiveAttachedPane(pane)),
-      "native attach should restore live non-detached PTY bindings through mux graph",
-    );
-    report.checks.push("native-attach-updates-mux-graph");
 
     await request(base, `/sessions/${workspaceId}`, { method: "DELETE" });
     report.status = "passed";

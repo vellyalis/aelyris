@@ -5,6 +5,7 @@
 // capture, close, auth, and unsafe-program rejection at the daemon boundary.
 
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
@@ -22,6 +23,18 @@ const TOKEN = process.env.AELYRIS_AI_CLI_BOUNDARY_TOKEN ?? "ai-cli-boundary-toke
 const WAIT_MS = Number.parseInt(process.env.AELYRIS_AI_CLI_BOUNDARY_WAIT_MS ?? "30000", 10);
 const CLIS = ["codex", "claude", "gemini"];
 const EXISTING_BASE = process.env.AELYRIS_AI_CLI_BOUNDARY_BASE?.replace(/\/+$/, "") ?? null;
+const INPUT_AUTHORITY_TOKEN =
+  process.env.AELYRIS_AI_CLI_BOUNDARY_INPUT_AUTHORITY_TOKEN ??
+  (EXISTING_BASE === null ? `ai-cli-boundary-input-${randomUUID()}` : null);
+const STARTUP_AUTHORITIES = [
+  "task_graph",
+  "execution_attempts",
+  "pane_pty_generations",
+  "ownership",
+  "worktrees_merge_intents",
+  "leases",
+  "event_bus",
+];
 
 if (!existsSync(SIDECAR)) {
   throw new Error(`PTY sidecar not found: ${SIDECAR}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
@@ -44,14 +57,19 @@ async function freePort() {
 }
 
 function startSidecar(port, tempRoot) {
+  if (!INPUT_AUTHORITY_TOKEN) {
+    throw new Error("local AI CLI boundary sidecar requires a private input-authority token");
+  }
   const child = spawn(SIDECAR, [], {
     cwd: ROOT,
     env: {
       ...process.env,
       AELYRIS_API_TOKEN: TOKEN,
+      AELYRIS_INPUT_AUTHORITY_TOKEN: INPUT_AUTHORITY_TOKEN,
       AELYRIS_PTY_SERVER_PORT: String(port),
       AELYRIS_MUX_SNAPSHOT_DIR: join(tempRoot, "mux"),
       AELYRIS_PTY_SCROLLBACK_DIR: join(tempRoot, "scrollback"),
+      AELYRIS_DB_PATH: join(tempRoot, "aelyris.db"),
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
@@ -136,6 +154,50 @@ async function waitForReady(base) {
     }
   }
   throw new Error(`sidecar did not become ready: ${lastError?.message ?? "unknown"}`);
+}
+
+async function admitIsolatedSidecar(base) {
+  if (!INPUT_AUTHORITY_TOKEN) {
+    throw new Error(
+      "external AI CLI boundary sidecar requires AELYRIS_AI_CLI_BOUNDARY_INPUT_AUTHORITY_TOKEN unless it is already admitted",
+    );
+  }
+  const epoch = randomUUID();
+  const headers = { "x-aelyris-input-authority": INPUT_AUTHORITY_TOKEN };
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ action: "begin", epoch }),
+  });
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      action: "publish",
+      epoch,
+      report: {
+        phase: "ready",
+        databaseReady: true,
+        sidecarConnected: true,
+        terminalReconciliationComplete: true,
+        adoptedTerminals: 0,
+        restoredSessions: 0,
+        reconciledHandoffs: 0,
+        authorities: STARTUP_AUTHORITIES.map((authority) => ({
+          authority,
+          status: "reconciled",
+          observed: 0,
+          reconciled: 0,
+          quarantined: 0,
+          details: [],
+        })),
+        quarantinedTotal: 0,
+        completedAtMs: Date.now(),
+        failureStage: null,
+        failureReason: null,
+      },
+    }),
+  });
 }
 
 function writeShimFiles(binDir) {
@@ -247,6 +309,9 @@ async function closeSessionIfPresent(base, id) {
 async function mintInputApproval(base, id, text) {
   const approval = await request(base, `/sessions/${id}/input-approval`, {
     method: "POST",
+    ...(INPUT_AUTHORITY_TOKEN
+      ? { headers: { "x-aelyris-input-authority": INPUT_AUTHORITY_TOKEN } }
+      : {}),
     body: JSON.stringify({ text }),
   });
   return {
@@ -380,6 +445,10 @@ async function main() {
       : false;
     if (!report.checks.commandSessionCapability) {
       throw new Error(`daemon contract is missing command-session capability: ${JSON.stringify(contract)}`);
+    }
+    if (!EXISTING_BASE) {
+      await admitIsolatedSidecar(base);
+      report.checks.startupAdmissionPublished = true;
     }
 
     const security = await assertSecurityGuards(base);
