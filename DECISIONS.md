@@ -437,3 +437,42 @@ Reconsider when:
   and ownership boundary without a third-party harness;
 - visible PTY fails a named Mission journey and a structured adapter is the
   simplest reversible repair.
+
+## ADR-018 V1-R0 Promotes None And Retains Visible PTY
+
+Status: **accepted** (executed decision 2026-08-09).
+
+Decision:
+
+- close `V1-R0` as `promote_none`;
+- retain visible PTY as the production Current Best;
+- do not install or adapt OpenCode, ACP, HTTP/SSE, an SDK runtime, or another harness
+  merely to populate the comparison;
+- do not activate V1-R1, V1-R2, or V1-R3 without a new admitted candidate that supplies
+  the complete bounded material-advantage and ownership receipt from ADR-017;
+- move the active Apex frontier to the first inert Mission replay baseline in V2.
+
+Reason:
+
+The current visible PTY path has executed the complete real-provider Mission journey,
+including visible work, fresh tests, independent review, exact-OID merge, immutable
+settlement, and restart recovery. No structured-runtime candidate exists in the
+repository or current runtime environment, and none has proved a material advantage
+without duplicating Aelyris session, permission, evidence, or durable-state ownership.
+Adding an adapter in that state would manufacture complexity rather than improve the
+product.
+
+Implication:
+
+`promote_none` is a completed comparison outcome, not a failed experiment. Universal
+runtime support and provider parity remain unclaimed. A future candidate must reopen
+admission from evidence and preserve immediate visible-PTY fallback.
+
+Reconsider when:
+
+- a pinned candidate exposes typed facts or recovery guarantees that materially exceed
+  the visible PTY baseline;
+- the candidate passes provenance, license/update, credential isolation, owner
+  non-duplication, compatibility, disable, retirement, and fallback gates;
+- the same Mission fixture demonstrates the advantage without weakening operator
+  visibility or backend authority.

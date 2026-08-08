@@ -3,10 +3,10 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `APEX V1 STRUCTURED RUNTIME CANDIDATE COMPARISON`.
-ACTIVE SLICE: `V1-R0`.
-LAST COMPLETED SLICE: `AIO-51`.
-NEXT IMPLEMENTATION SLICE: `V1-R0`.
+CURRENT PHASE: `APEX V2 MISSION TIME MACHINE`.
+ACTIVE SLICE: `V2-M0`.
+LAST COMPLETED SLICE: `V1-R0`.
+NEXT IMPLEMENTATION SLICE: `V2-M0`.
 
 ```yaml
 continuation_contract:
@@ -66,7 +66,8 @@ Current portfolio classification:
 | MCP bounded Mission history | **COMPLETE** | One bounded newest-first SQLite projection distinguishes the exact current incomplete Mission from prior packet-backed completion without cache/index/Event history or Goal/task/packet payload exposure |
 | Cockpit Mission history and receipt inspector | **COMPLETE** | The existing Orchestrator panel now reads the same bounded history and current immutable receipt projections as MCP, with explicit incomplete/completed/inconsistent states and no frontend completion authority |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Apex V1 structured-runtime comparison | **ACTIVE / V1-R0 / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
+| Apex V1 structured-runtime comparison | **COMPLETE / `promote_none`** | Visible PTY remains Current Best; no candidate produced a bounded material-advantage/admission receipt, so no OpenCode or other runtime, dependency, daemon, adapter, or verifier family was introduced |
+| Apex V2 deterministic Mission replay baseline | **ACTIVE / V2-M0** | Build one inert canonical projection/hash from existing durable Mission, TaskGraph, execution, event, and packet owners; replay must remain read-only and restart-stable |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2158,7 +2159,7 @@ Status: **COMPLETE**.
 Capability target: candidate-neutral confirmation of whether any structured runtime
 materially beats the verified visible-PTY Current Best without duplicating Aelyris
 Mission, session, permission, evidence, review, merge, or durable-state ownership.
-Status: **ACTIVE**.
+Status: **COMPLETE / `promote_none`**.
 
 - Do not install OpenCode or another runtime merely to create a candidate. Admission
   requires a bounded receipt covering typed facts, material advantage, provenance,
@@ -2171,6 +2172,38 @@ Status: **ACTIVE**.
 - No production adapter, daemon, dependency, alternate session owner, or runtime TUI is
   created in V1-R0. A production implementation slice opens only after one candidate
   wins the comparison under the existing Apex roadmap contract.
+
+- Done: the real-provider GMV-3 and AIO-47 journeys freeze visible PTY as the current
+  executed baseline for planning, visible implementation, fresh tests, independent
+  review, exact-OID settlement, operator observation, and same-SQLite recovery.
+- Done: repository dependency/source scans found no admitted structured-runtime
+  implementation, and the machine had no exact structured-runtime process. No
+  candidate supplied the required typed-fact, material-advantage, provenance/license,
+  credential-isolation, owner-nonduplication, or fallback receipt.
+- Decision: `promote_none`. Visible PTY remains Current Best. V1-R1/V1-R2/V1-R3 do
+  not activate, and no OpenCode/ACP/HTTP/SSE/SDK adapter or daemon is added.
+
+### V2-M0 — Deterministic Mission Replay Baseline
+
+Capability target: an inert, restart-stable canonical projection of one current
+accepted Mission from existing durable owners, producing one stable replay hash with
+zero runtime/Git/review/merge/settlement effects.
+Status: **ACTIVE**.
+
+- Build over the existing Mission/TaskGraph, `WorkExecutionAttempt`, durable Event Bus,
+  `CompletedWorkPacket`, and `MissionCompletionPacket` owners. Do not create a second
+  journal, TaskGraph, packet store, event stream, checkpoint authority, or replay cache.
+- Equal durable source facts must produce byte-identical canonical material and the same
+  replay hash before and after process restart. Source ordering that is semantically
+  unordered must be normalized deterministically.
+- Replay is observation only. It may not execute Git, PTY, provider, approval, review,
+  merge, Event ACK, settlement, compensation, or capability-grant effects.
+- Fail closed on missing durability, stream gaps/corruption, ambiguous Mission/task
+  scope, packet inconsistency, or event streams above the explicit finite bound. Never
+  return a partial hash as a successful replay.
+- The first slice is an internal runtime baseline, not a Time Machine UI or destructive
+  rollback feature. Product history scrub, checkpoint selection, recovery worktrees,
+  compensation, and uncertain-effect reconciliation remain later bounded slices.
 
 ## Deferred After GMV
 
@@ -2221,8 +2254,8 @@ Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, backend-
 visible Mission run-next `AIO-47`, current-Mission-scoped review settlement `AIO-48`,
 durable Mission completion receipt `AIO-49`, bounded Mission history `AIO-50`, and
 cockpit Mission history and receipt inspection `AIO-51` are also complete. `GMV-3` is
-Claim-Eligible; candidate-neutral structured-runtime comparison `V1-R0` is the active
-frontier.
+Claim-Eligible; `V1-R0` is complete as `promote_none`, and deterministic Mission
+replay baseline `V2-M0` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded
