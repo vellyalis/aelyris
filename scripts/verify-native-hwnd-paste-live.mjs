@@ -245,6 +245,17 @@ async function waitForSnapshotText(page, terminalId, needle, timeoutMs = 5000) {
   return { found: false, text: lastText };
 }
 
+async function waitForNativeInputStatus(page, predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = null;
+  while (Date.now() < deadline) {
+    lastStatus = await call(page, "native_terminal_input_status", {}).catch(() => null);
+    if (lastStatus && predicate(lastStatus)) return lastStatus;
+    await sleep(100);
+  }
+  return lastStatus;
+}
+
 async function waitForPowershellReadiness(page, terminalId) {
   const ready = await waitForSnapshotText(page, terminalId, "PS ", 15000);
   return ready.found;
@@ -348,9 +359,17 @@ async function runCase(page, terminalId, testCase) {
   await sleep(80);
   const before = await call(page, "native_terminal_input_status", {});
   const send = sendNativePaste(focus.hwnd, testCase.text);
-  await sleep(120);
-  const afterPaste = await call(page, "native_terminal_input_status", {});
-  const afterDrain = await drainAndStatus(page);
+  const beforeEventCount = Number(before?.nativePasteGuardEventCount ?? 0);
+  const afterPaste = await waitForNativeInputStatus(
+    page,
+    (status) =>
+      Number(status?.nativePasteGuardEventCount ?? 0) > beforeEventCount &&
+      status?.nativePasteGuardLastAction === testCase.expectedAction &&
+      status?.nativePasteGuardLastReason === testCase.expectedReason &&
+      status?.nativePasteGuardLastLineEndings === testCase.expectedLineEndings,
+    2500,
+  );
+  await drainAndStatus(page);
   const visible = await waitForSnapshotText(
     page,
     terminalId,
@@ -358,13 +377,22 @@ async function runCase(page, terminalId, testCase) {
     testCase.expectVisible ? 15000 : 1200,
   );
   const beforeCommitCount = Number(before?.directPtyCommitCount ?? 0);
+  const afterDrain = testCase.expectVisible
+    ? await waitForNativeInputStatus(
+        page,
+        (status) =>
+          Number(status?.directPtyCommitCount ?? 0) > beforeCommitCount &&
+          status?.lastCommitSource === "native-clipboard-paste",
+        5000,
+      )
+    : await call(page, "native_terminal_input_status", {});
   const afterDrainCommitCount = Number(afterDrain?.directPtyCommitCount ?? 0);
   const passed =
     send.ok === true &&
     afterPaste?.nativePasteGuardLastAction === testCase.expectedAction &&
     afterPaste?.nativePasteGuardLastReason === testCase.expectedReason &&
     afterPaste?.nativePasteGuardLastLineEndings === testCase.expectedLineEndings &&
-    afterPaste?.nativePasteGuardEventCount > before?.nativePasteGuardEventCount &&
+    Number(afterPaste?.nativePasteGuardEventCount ?? 0) > beforeEventCount &&
     visible.found === testCase.expectVisible &&
     (testCase.expectVisible ? afterDrainCommitCount > beforeCommitCount : afterDrainCommitCount === beforeCommitCount);
   return {
