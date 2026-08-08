@@ -1122,6 +1122,21 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.plan",
+        "description": "Submit one plain-language Goal to the existing backend-owned planner and atomic Mission/TaskGraph acceptance path. The authenticated Principal supplies only repository identity, Goal, and optional bounded context; it cannot supply a planner binary/command/model, Mission or plan identity, task ids/graph, branches, outputs, symbol intents, status, retries, or packets. The result returns accepted Mission identity plus a value-minimized generated-task coordination view. Authority audit stores only Principal, one-way repository/Goal/context/input digests, outcome, and aggregate counts—never paths, Goal/context text, prompts, plan JSON, task values, or Mission/plan ids.",
+        "safety": "GATED",
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath", "goal"],
+            "properties": {
+                "repoPath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+                "goal": { "type": "string", "minLength": 1, "maxLength": 16384 },
+                "context": { "type": "string", "maxLength": 32768 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.mission.review_and_settle",
         "description": "Trigger the existing backend-owned Mission review, exact-OID merge, and immutable settlement path for one task already in Review. The authenticated Principal supplies only repository and task identity; it cannot supply a verdict, reviewer identity, candidate/target OID, merge token, gate result, WorkPacket, or MissionCompletionPacket. The fixed independent reviewer and existing Task/Review/Merge/settlement owners remain authoritative. The result exposes the exact reviewed candidate and packet identities needed for durable coordination, while authority audit stores only one-way repository/task/input digests and outcome flags—never paths, OIDs, review findings, or packet ids.",
         "safety": "GATED",

@@ -53,10 +53,12 @@ order and the authoritative specs. Key still-active specs include:
    Task/Mission packets, durable completion, worktree reclamation, and same-SQLite
    restart. AIO-44 makes that existing backend-owned review/settlement path reachable
    by authenticated MCP while accepting no caller-authored verdict, reviewer, OID,
-   merge authority, or packet. Product delivery is now at AIO-45: authenticated MCP
-   plain-language Goal submission through the existing planner and atomic Mission/
-   TaskGraph owner. Operator/external certification remains pending without owning
-   repository mutation.
+   merge authority, or packet. AIO-45 now accepts authenticated MCP plain-language
+   Goals through the existing planner and atomic Mission/TaskGraph owner. Product
+   delivery is at AIO-46: value-minimized authenticated recovery of the exact current
+   Mission/plan/TaskGraph state after reconnect or restart, without raw Goal, path,
+   task description, branch, output, model, symbol, or packet values. Operator/external
+   certification remains pending without owning repository mutation.
    Its A7 Core first proves the canonical request -> plan preview -> visible
    implementation -> fresh tests -> independent review -> exact-OID settlement ->
    immutable packet journey. Deferred product requirements remain in the full Goal

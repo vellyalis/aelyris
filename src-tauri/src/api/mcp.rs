@@ -11,6 +11,7 @@ mod cost_caps;
 mod dispatch;
 mod event_ack;
 mod fleet_status;
+mod mission_planning;
 mod mission_review_settlement;
 mod mux_topology;
 mod orchestrator_step;
@@ -190,7 +191,7 @@ pub(super) struct JsonRpcReq {
 
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) context.set the project decisions/ADR (injected into every dispatched agent). (2) task.create one per subtask with owner=<implementer identity>, model=<claude|codex|gemini> (optional CLI routing; defaults to owner), sourceBranch/targetBranch, dependencies, outputs=<file lanes>; check ownership.conflicts. (3) worktree.create each branch. (4) Call orchestrator.step repeatedly with {repoPath, activeAgents}: finished agents move to Review, failed agents recover within bounded budgets, and ready tasks spawn; this tool never accepts review verdicts and never merges. (5) For a task already in Review, call mission.review_and_settle with only {repoPath, taskId}. The backend freezes and revalidates the candidate, runs the fixed independent reviewer, consumes the exact-OID merge authority, and mints settlement packets. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (6) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
+const MCP_INSTRUCTIONS: &str = "Aelyris is an autonomous build runtime you (the orchestrator) drive via these aelyris.* tools; the worker agents (real claude/codex/gemini CLIs in isolated worktrees) do the implementation. Loop: (1) For a plain-language Goal, call mission.plan with only {repoPath, goal, optional context}; the backend default planner creates and atomically accepts the Mission plus TaskGraph. The caller cannot supply Mission/plan/task identity, branches, outputs, model, command, status, or packets. For deliberately manual graphs, context.set then task.create/worktree.create remain available as lower-level operations. (2) Call orchestrator.step repeatedly with {repoPath, activeAgents}: finished agents move to Review, failed agents recover within bounded budgets, and ready tasks spawn; this tool never accepts review verdicts and never merges. (3) For a task already in Review, call mission.review_and_settle with only {repoPath, taskId}. The backend freezes and revalidates the candidate, runs the fixed independent reviewer, consumes the exact-OID merge authority, and mints settlement packets. The caller cannot supply a verdict, candidate OID, reviewer identity, merge token, or packet. aelyris.request_merge and aelyris.review.approve remain retired. (4) Coordinate between steps via event.recent / agent.activity, knowledge.impact, intent.propose/list, ownership.conflicts, and blocker_raised. Local-only; concurrency cap 4.";
 const MCP_SCOPED_INSTRUCTIONS: &str = "Aelyris exposes a principal-scoped MCP catalog. Discover available operations through tools/list and invoke only returned tools. Catalog visibility is not authority: every tools/call is re-authorized and remains subject to command-risk, approval, review, settlement, and ownership boundaries. Generic orchestration may stop before integration; hidden capabilities must not be inferred. Local-only.";
 
 fn mcp_instructions_for_actor(state: &ApiState, actor: &str) -> &'static str {
@@ -319,7 +320,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
-    const FROZEN_A64_VERBS: [&str; 90] = [
+    const FROZEN_A64_VERBS: [&str; 91] = [
         "terminal.list",
         "terminal.capture",
         "mux.workspaces.list",
@@ -370,6 +371,7 @@ mod tests {
         "aelyris.task.transition",
         "aelyris.orchestrator.plan",
         "aelyris.orchestrator.step",
+        "aelyris.mission.plan",
         "aelyris.mission.review_and_settle",
         "aelyris.supervisor.health",
         "aelyris.event.recent",
@@ -3948,6 +3950,191 @@ mod tests {
             schema_error["error"]["schema_violation"]["unknown"],
             serde_json::json!(["verdict"])
         );
+    }
+
+    #[test]
+    fn mcp_mission_planning_exposes_no_caller_authored_plan_authority() {
+        use crate::db::{AuditJournalFilter, Database, ManagedDb};
+        use crate::pty::PtyManager;
+
+        let schema =
+            input_schema_for_tool_ref("aelyris.mission.plan").expect("Mission planning schema");
+        assert_eq!(schema["required"], serde_json::json!(["repoPath", "goal"]));
+        assert_eq!(schema["additionalProperties"], false);
+        let properties = schema["properties"].as_object().expect("schema properties");
+        assert_eq!(
+            properties.keys().cloned().collect::<BTreeSet<_>>(),
+            [
+                "context".to_string(),
+                "goal".to_string(),
+                "repoPath".to_string(),
+            ]
+            .into_iter()
+            .collect()
+        );
+        assert_eq!(properties["repoPath"]["maxLength"], 4096);
+        assert_eq!(properties["goal"]["maxLength"], 16384);
+        assert_eq!(properties["context"]["maxLength"], 32768);
+        for forbidden in [
+            "actor",
+            "model",
+            "command",
+            "missionId",
+            "planId",
+            "tasks",
+            "dependencies",
+            "sourceBranch",
+            "targetBranch",
+            "outputs",
+            "symbols",
+            "status",
+            "workPacket",
+        ] {
+            assert!(properties.get(forbidden).is_none());
+        }
+
+        let tools = tools_list_value();
+        let tool = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == "aelyris.mission.plan")
+            .expect("Mission planning tool");
+        assert_eq!(tool["safety"], "GATED");
+        let description = tool["description"].as_str().unwrap();
+        for required in [
+            "backend-owned planner",
+            "atomic Mission/TaskGraph",
+            "cannot supply a planner binary/command/model",
+            "value-minimized generated-task coordination view",
+            "never paths",
+        ] {
+            assert!(
+                description.contains(required),
+                "description missing {required}"
+            );
+        }
+
+        let db = Arc::new(ManagedDb::new(Database::open_memory().unwrap()));
+        let state = ApiState::new(
+            PtyManager::new(),
+            crate::api::AuthConfig::with_token("AIO45_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED"),
+        )
+        .with_db(Some(db.clone()));
+        let repo_path = "C:/AIO45_REPOSITORY_PATH_MUST_NOT_BE_LOGGED";
+        let goal = "AIO45_GOAL_VALUE_MUST_NOT_BE_LOGGED";
+        let context = "AIO45_CONTEXT_VALUE_MUST_NOT_BE_LOGGED";
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(matches!(
+            rt.block_on(tools_call_as_actor(
+                &state,
+                "mission-planning-operator",
+                ToolCallBody {
+                    name: "aelyris.mission.plan".to_string(),
+                    arguments: serde_json::json!({
+                        "repoPath": repo_path,
+                        "goal": goal,
+                        "context": context,
+                    }),
+                },
+            )),
+            Err(ApiError::Internal(message))
+                if message.contains("runtime is not attached")
+        ));
+
+        let rows = db
+            .with(|database| {
+                database.list_audit_journal_events(&AuditJournalFilter {
+                    kind: Some("mcp_mission_planning_authority".to_string()),
+                    limit: Some(10),
+                    ..Default::default()
+                })
+            })
+            .expect("read Mission planning audit");
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.agent_id.as_deref(), Some("mission-planning-operator"));
+        assert!(row.task_id.is_none());
+        assert!(row.session_id.is_none());
+        assert!(row.terminal_id.is_none());
+        assert_eq!(row.redacted_payload_json["status"], "rejected");
+        assert_eq!(
+            row.redacted_payload_json["rejectionCode"],
+            "runtime_owner_unavailable"
+        );
+        for field in [
+            "repositoryDigest",
+            "goalDigest",
+            "contextDigest",
+            "inputDigest",
+        ] {
+            let digest = row.redacted_payload_json[field]
+                .as_str()
+                .expect("one-way digest");
+            assert_eq!(digest.len(), 64);
+            assert!(digest
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+        }
+        for flag in [
+            "callerSuppliedPlannerModel",
+            "callerSuppliedPlannerCommand",
+            "callerSuppliedMissionIdentity",
+            "callerSuppliedPlanIdentity",
+            "callerSuppliedTaskGraph",
+            "callerSuppliedBranch",
+            "callerSuppliedOutput",
+            "callerSuppliedStatus",
+            "callerSuppliedPacket",
+            "goalValueLogged",
+            "contextValueLogged",
+            "repositoryPathLogged",
+            "promptLogged",
+            "planJsonLogged",
+            "taskValuesLogged",
+            "missionIdentityLogged",
+            "planIdentityLogged",
+        ] {
+            assert_eq!(row.redacted_payload_json[flag], false, "flag {flag}");
+        }
+        let audit_text = serde_json::to_string(row).unwrap();
+        for hidden in [
+            repo_path,
+            goal,
+            context,
+            "AIO45_PUBLIC_TOKEN_MUST_NOT_BE_LOGGED",
+        ] {
+            assert!(!audit_text.contains(hidden), "audit exposed {hidden}");
+        }
+
+        for (field, value) in [
+            ("model", serde_json::json!("caller-model")),
+            ("tasks", serde_json::json!([{"id": "caller-task"}])),
+        ] {
+            let mut arguments = serde_json::Map::new();
+            arguments.insert("repoPath".to_string(), serde_json::json!(repo_path));
+            arguments.insert("goal".to_string(), serde_json::json!(goal));
+            arguments.insert(field.to_string(), value);
+            let Json(schema_error) = rt
+                .block_on(tools_call_as_actor(
+                    &state,
+                    "mission-planning-operator",
+                    ToolCallBody {
+                        name: "aelyris.mission.plan".to_string(),
+                        arguments: serde_json::Value::Object(arguments),
+                    },
+                ))
+                .expect("schema rejection is structured");
+            assert_eq!(schema_error["ok"], false);
+            assert_eq!(
+                schema_error["error"]["schema_violation"]["verb"],
+                "aelyris.mission.plan"
+            );
+            assert_eq!(
+                schema_error["error"]["schema_violation"]["unknown"],
+                serde_json::json!([field])
+            );
+        }
     }
 
     #[test]

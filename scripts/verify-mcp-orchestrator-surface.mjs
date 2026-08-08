@@ -11,6 +11,7 @@ const read = (relativePath) =>
 const api = read("src-tauri/src/api/mod.rs");
 const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
 const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
+const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionReviewSettlement = read(
   "src-tauri/src/api/mcp/mission_review_settlement.rs",
 );
@@ -20,6 +21,7 @@ const apiMcp = [
   mcpCatalog,
   read("src-tauri/src/api/mcp/dispatch.rs"),
   mcpOrchestratorStep,
+  mcpMissionPlanning,
   mcpMissionReviewSettlement,
   mcpPendingDecisions,
 ].join("\n");
@@ -28,6 +30,7 @@ const merge = read("src-tauri/src/control/merge.rs");
 const gitMod = read("src-tauri/src/git/mod.rs");
 const gitMerge = read("src-tauri/src/git/merge.rs");
 const ipcCommands = read("src-tauri/src/ipc/commands.rs");
+const taskCommands = read("src-tauri/src/ipc/task_commands.rs");
 const orchestratorIpc = read("src-tauri/src/ipc/orchestrator_commands.rs");
 const reviewIpc = read("src-tauri/src/ipc/review_commands.rs");
 const loopPorts = read("src-tauri/src/control/loop_ports.rs");
@@ -40,6 +43,7 @@ const eventBus = read("src-tauri/src/event_bus/mod.rs");
 const knowledgeGraph = read("src-tauri/src/knowledge_graph/mod.rs");
 const symbolOwnership = read("src-tauri/src/symbol_ownership/mod.rs");
 const planner = read("src-tauri/src/task/planner.rs");
+const taskManager = read("src-tauri/src/task/manager.rs");
 const sliceBetween = (text, start, end) => {
   const from = text.indexOf(start);
   if (from < 0) return "";
@@ -50,6 +54,11 @@ const orchestratorStepCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.orchestrator.step"',
   '"name": "aelyris.event.recent"',
+);
+const missionPlanningCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.plan"',
+  '"name": "aelyris.mission.review_and_settle"',
 );
 const missionReviewSettlementCatalog = sliceBetween(
   mcpCatalog,
@@ -79,6 +88,7 @@ const requiredTools = [
   "aelyris.task.transition",
   "aelyris.orchestrator.plan",
   "aelyris.orchestrator.step",
+  "aelyris.mission.plan",
   "aelyris.mission.review_and_settle",
   "aelyris.supervisor.health",
   "aelyris.event.recent",
@@ -213,6 +223,7 @@ const checks = [
       apiMcp.includes('"aelyris.task.list"') &&
       apiMcp.includes('"aelyris.task.transition"') &&
       apiMcp.includes('"aelyris.orchestrator.plan"') &&
+      apiMcp.includes('"aelyris.mission.plan"') &&
       apiMcp.includes("state.task_manager.as_ref()") &&
       api.includes("pub task_manager: Option<Arc<crate::task::TaskManager>>") &&
       api.includes("pub fn with_task_manager") &&
@@ -220,6 +231,40 @@ const checks = [
       lib.includes("Arc::new(task::TaskManager::new_durable())"),
     detail:
       "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
+  },
+  {
+    id: "mcp-mission-planning-is-caller-unshaped-and-atomic",
+    ok:
+      apiMcp.includes('"aelyris.mission.plan"') &&
+      missionPlanningCatalog.includes('"required": ["repoPath", "goal"]') &&
+      missionPlanningCatalog.includes('"context"') &&
+      missionPlanningCatalog.includes('"additionalProperties": false') &&
+      !missionPlanningCatalog.includes('"model"') &&
+      !missionPlanningCatalog.includes('"command"') &&
+      !missionPlanningCatalog.includes('"missionId"') &&
+      !missionPlanningCatalog.includes('"planId"') &&
+      !missionPlanningCatalog.includes('"tasks"') &&
+      !missionPlanningCatalog.includes('"sourceBranch"') &&
+      !missionPlanningCatalog.includes('"outputs"') &&
+      mcpMissionPlanning.includes("crate::ipc::plan_build(") &&
+      mcpMissionPlanning.includes('"profile": "backend-default"') &&
+      mcpMissionPlanning.includes('"callerSuppliedPlannerModel": false') &&
+      mcpMissionPlanning.includes('"callerSuppliedPlannerCommand": false') &&
+      mcpMissionPlanning.includes('"callerSuppliedMissionIdentity": false') &&
+      mcpMissionPlanning.includes('"callerSuppliedPlanIdentity": false') &&
+      mcpMissionPlanning.includes('"callerSuppliedTaskGraph": false') &&
+      mcpMissionPlanning.includes('"callerSuppliedPacket": false') &&
+      mcpMissionPlanning.includes('"valueMinimized": true') &&
+      mcpMissionPlanning.includes('"taskDescriptionsExposed": false') &&
+      mcpMissionPlanning.includes('"outputPathsExposed": false') &&
+      mcpMissionPlanning.includes('"branchNamesExposed": false') &&
+      mcpMissionPlanning.includes('"modelAssignmentsExposed": false') &&
+      taskCommands.includes("pub async fn plan_build(") &&
+      taskCommands.includes(".submit_cockpit_plan(") &&
+      taskManager.includes("pub fn submit_cockpit_plan(") &&
+      taskManager.includes("TaskRepo::persist_accepted_cockpit_plan("),
+    detail:
+      "mission.plan accepts only bounded Goal/context/repository identity, delegates the backend default planner into the existing atomic Mission/TaskGraph owner, and returns a value-minimized coordination view",
   },
   {
     id: "mcp-orchestrator-step-drives-real-loop",
