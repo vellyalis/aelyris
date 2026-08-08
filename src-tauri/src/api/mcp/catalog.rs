@@ -1122,6 +1122,19 @@ fn build_tools_list_value() -> serde_json::Value {
         .and_then(serde_json::Value::as_array_mut)
         .expect("MCP catalog tools must be an array");
     tools.push(serde_json::json!({
+        "name": "aelyris.mission.current",
+        "description": "Read the exact current accepted cockpit Mission and value-minimized TaskGraph coordination state for one repository after reconnect or restart. The authenticated caller supplies only repoPath and cannot shape Mission, plan, task, status, branch, model, packet, limit, or cursor identity. The existing SQLite-backed TaskManager remains the sole owner. Returns exact Mission/plan ids and revisions plus bounded task ids/statuses and status counts, but never raw Goal/request, repository path, planner prompt/response, task descriptions, dependency values, output paths, branch names, model assignments, symbol values, or packet contents. A repository with no accepted cockpit Mission returns an explicit structured not_found outcome rather than a synthetic empty Mission.",
+        "safety": "FREE",
+        "inputSchema": {
+            "type": "object",
+            "required": ["repoPath"],
+            "properties": {
+                "repoPath": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            },
+            "additionalProperties": false
+        }
+    }));
+    tools.push(serde_json::json!({
         "name": "aelyris.mission.plan",
         "description": "Submit one plain-language Goal to the existing backend-owned planner and atomic Mission/TaskGraph acceptance path. The authenticated Principal supplies only repository identity, Goal, and optional bounded context; it cannot supply a planner binary/command/model, Mission or plan identity, task ids/graph, branches, outputs, symbol intents, status, retries, or packets. The result returns accepted Mission identity plus a value-minimized generated-task coordination view. Authority audit stores only Principal, one-way repository/Goal/context/input digests, outcome, and aggregate counts—never paths, Goal/context text, prompts, plan JSON, task values, or Mission/plan ids.",
         "safety": "GATED",

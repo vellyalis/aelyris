@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-46`.
-LAST COMPLETED SLICE: `AIO-45`.
-NEXT IMPLEMENTATION SLICE: `AIO-46`.
+ACTIVE SLICE: `AIO-47`.
+LAST COMPLETED SLICE: `AIO-46`.
+NEXT IMPLEMENTATION SLICE: `AIO-47`.
 
 ```yaml
 continuation_contract:
@@ -59,7 +59,8 @@ Current portfolio classification:
 | Exact-OID Mission settlement | **COMPLETE / CLAIM-ELIGIBLE** | Real Codex planned and implemented through visible PTY; fixed independent review accepted the frozen candidate; exact-OID merge, both immutable packets, durable completion, worktree reclamation, and same-SQLite restart passed on 2026-08-08 |
 | MCP backend-owned Mission review and settlement | **COMPLETE** | Authenticated AI supplies only repository/task identity; the existing fixed reviewer, exact-OID merge authority, packets, durable event, cleanup, and restart remain backend-owned |
 | MCP backend-owned Mission planning | **COMPLETE** | Authenticated AI supplies only repository, Goal, and bounded context; the backend default real-Codex planner atomically accepts the Mission/TaskGraph and restores it from the same SQLite authority |
-| MCP value-minimized Mission continuity | **ACTIVE / AIO-46** | A reconnecting AI still needs the exact current Mission/plan identity and bounded TaskGraph status without receiving raw Goal, repository, task descriptions, branches, outputs, models, or symbols |
+| MCP value-minimized Mission continuity | **COMPLETE** | A reconnecting AI supplies only repository identity and recovers the exact accepted Mission/plan plus bounded TaskGraph status from the existing SQLite-backed TaskManager, with structured absence and no raw planning values |
+| MCP backend-owned visible Mission run-next | **ACTIVE / AIO-47** | The remaining self-operation gap is the implementation tick: MCP still routes through the legacy headless step and accepts caller-reported active-agent usage instead of invoking the existing visible cockpit owner with backend-derived honest admission facts |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
@@ -1883,7 +1884,7 @@ Status: **COMPLETE**.
 Capability target: `Product-Accessible` authenticated read-only recovery of the exact
 current cockpit Mission identity and bounded TaskGraph coordination state after a
 client reconnect or application restart.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add `aelyris.mission.current` over the existing `current_cockpit_mission` and
   TaskManager owners. The caller supplies only `repoPath`; it cannot supply Mission,
@@ -1900,6 +1901,46 @@ Status: **ACTIVE**.
 - Done when a fresh MCP caller can discard the original `mission.plan` response,
   restart Aelyris on the same SQLite database, and recover the exact accepted Mission,
   plan, and TaskGraph status without raw-value leakage or a second planner call.
+
+- Done: `aelyris.mission.current` now accepts only `repoPath` and delegates directly to
+  `TaskManager::current_cockpit_mission` plus one current TaskGraph snapshot. The
+  original AIO-45 SQLite database restored Mission
+  `019fdfd7-ea93-7983-ae56-d23cb03aa98a`, plan
+  `019fdfd7-ea93-7983-ae56-d24652fd2d3c`, and task `add-aio45-test=ready` through MCP
+  HTTP alone after Aelyris restart. The planner-audit row count remained unchanged,
+  raw Goal/context/repository values and task implementation metadata were absent,
+  caller-supplied Mission query shaping failed schema validation, and a separate
+  repository returned `accepted_cockpit_mission_not_found` with
+  `syntheticMissionCreated:false`. The target repository and its single-worktree state
+  remained unchanged.
+
+### AIO-47 — MCP Backend-Owned Visible Mission Run Next
+
+Capability target: `Product-Accessible` authenticated advancement of the current
+accepted Mission through the existing visible cockpit implementation-step owner.
+Status: **ACTIVE**.
+
+- Add one Mission-scoped MCP operation that accepts only `repoPath`, resolves the
+  current accepted Mission through the existing TaskManager authority, and delegates
+  the implementation tick to the existing `orchestrator_step` / `run_step_visible`
+  path. Do not create a second dispatcher, runner, PaneFleet, TaskGraph, or execution
+  state machine.
+- Derive admission usage from existing live runtime owners. The caller cannot supply
+  `activeAgents`, tokens, cost, runtime, task ids, model, command, branch, gate,
+  reviewer, merge, or packet authority. If a configured budget axis lacks trustworthy
+  telemetry, fail closed instead of substituting zero.
+- Preserve visible PTY execution and the current 1-pane-per-agent product path. This
+  operation stops at `Review`; `aelyris.mission.review_and_settle` remains the only
+  Mission MCP path that can invoke independent review, exact-OID merge, or immutable
+  settlement.
+- Return a value-minimized step projection: loop state, bounded dispatched/recovered/
+  escalated task identities and counts, and explicit visible-runtime/admission source
+  metadata. Do not return repository/worktree paths, prompts, commands, terminal ids,
+  provider output, raw usage values, review evidence, OIDs, or packet contents.
+- Done when MCP can continue an accepted Mission from `mission.current`, dispatch the
+  same visible worker the cockpit would dispatch, observe the task transition through
+  the existing owners, and refuse caller-shaped or telemetry-unknown admission without
+  weakening the separate review/settlement boundary.
 
 ## Deferred After GMV
 
@@ -1945,9 +1986,10 @@ pending-decision read `AIO-36` is also complete. MCP path-minimized worktree inv
 also complete. MCP principal-bound terminal capture evidence `AIO-39` and MCP
 value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-41`, MCP scoped GhostDiff inspection `AIO-42`, MCP path-free worktree prediction
-`AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, and MCP backend-owned
-Mission planning `AIO-45` are also complete. `GMV-3` is Claim-Eligible; MCP value-
-minimized Mission continuity `AIO-46` is the active frontier.
+`AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
+Mission planning `AIO-45`, and value-minimized Mission continuity `AIO-46` are also
+complete. `GMV-3` is Claim-Eligible; MCP backend-owned visible Mission run-next
+`AIO-47` is the active frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

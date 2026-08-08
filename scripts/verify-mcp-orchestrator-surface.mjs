@@ -11,6 +11,7 @@ const read = (relativePath) =>
 const api = read("src-tauri/src/api/mod.rs");
 const mcpCatalog = read("src-tauri/src/api/mcp/catalog.rs");
 const mcpOrchestratorStep = read("src-tauri/src/api/mcp/orchestrator_step.rs");
+const mcpMissionContinuity = read("src-tauri/src/api/mcp/mission_continuity.rs");
 const mcpMissionPlanning = read("src-tauri/src/api/mcp/mission_planning.rs");
 const mcpMissionReviewSettlement = read(
   "src-tauri/src/api/mcp/mission_review_settlement.rs",
@@ -21,6 +22,7 @@ const apiMcp = [
   mcpCatalog,
   read("src-tauri/src/api/mcp/dispatch.rs"),
   mcpOrchestratorStep,
+  mcpMissionContinuity,
   mcpMissionPlanning,
   mcpMissionReviewSettlement,
   mcpPendingDecisions,
@@ -55,6 +57,11 @@ const orchestratorStepCatalog = sliceBetween(
   '"name": "aelyris.orchestrator.step"',
   '"name": "aelyris.event.recent"',
 );
+const missionContinuityCatalog = sliceBetween(
+  mcpCatalog,
+  '"name": "aelyris.mission.current"',
+  '"name": "aelyris.mission.plan"',
+);
 const missionPlanningCatalog = sliceBetween(
   mcpCatalog,
   '"name": "aelyris.mission.plan"',
@@ -88,6 +95,7 @@ const requiredTools = [
   "aelyris.task.transition",
   "aelyris.orchestrator.plan",
   "aelyris.orchestrator.step",
+  "aelyris.mission.current",
   "aelyris.mission.plan",
   "aelyris.mission.review_and_settle",
   "aelyris.supervisor.health",
@@ -231,6 +239,30 @@ const checks = [
       lib.includes("Arc::new(task::TaskManager::new_durable())"),
     detail:
       "orchestrator AI can decompose/assign/inspect the Task Graph over MCP against the same Arc<TaskManager> the cockpit shows (one source of truth, BR4/BR9)",
+  },
+  {
+    id: "mcp-mission-current-is-value-minimized-and-restart-safe",
+    ok:
+      apiMcp.includes('"aelyris.mission.current"') &&
+      missionContinuityCatalog.includes('"required": ["repoPath"]') &&
+      missionContinuityCatalog.includes('"additionalProperties": false') &&
+      !missionContinuityCatalog.includes('"missionId"') &&
+      !missionContinuityCatalog.includes('"planId"') &&
+      !missionContinuityCatalog.includes('"taskId"') &&
+      !missionContinuityCatalog.includes('"status"') &&
+      !missionContinuityCatalog.includes('"limit"') &&
+      !missionContinuityCatalog.includes('"cursor"') &&
+      mcpMissionContinuity.includes("current_cockpit_mission(repo_path)") &&
+      mcpMissionContinuity.includes("found_projection(mission, tasks.list())") &&
+      mcpMissionContinuity.includes('"outcome": "not_found"') &&
+      mcpMissionContinuity.includes('"syntheticMissionCreated": false') &&
+      mcpMissionContinuity.includes('"volatileEventCacheUsed": false') &&
+      mcpMissionContinuity.includes('"secondPlannerInvoked": false') &&
+      mcpMissionContinuity.includes('"rawGoalExposed": false') &&
+      mcpMissionContinuity.includes('"dependencyValuesExposed": false') &&
+      mcpMissionContinuity.includes('"packetContentsExposed": false'),
+    detail:
+      "mission.current accepts only repository identity, reads the existing SQLite-backed current Mission plus TaskManager snapshot, returns exact ids/statuses with explicit value-minimization, and represents absence without a synthetic Mission",
   },
   {
     id: "mcp-mission-planning-is-caller-unshaped-and-atomic",
