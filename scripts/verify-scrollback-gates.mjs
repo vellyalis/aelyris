@@ -1,8 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createEvidenceProvenance } from "./evidence-provenance.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const extension = process.platform === "win32" ? ".exe" : "";
@@ -12,9 +14,23 @@ const sidecar =
 const out =
   process.env.AELYRIS_SCROLLBACK_OUT ?? join(root, ".codex-auto", "performance", "scrollback-gates.json");
 const token = process.env.AELYRIS_SCROLLBACK_TOKEN ?? "scrollback-gate-token";
+const inputAuthorityToken =
+  process.env.AELYRIS_SCROLLBACK_INPUT_AUTHORITY_TOKEN ?? `scrollback-input-${randomUUID()}`;
+const startupAuthorities = [
+  "task_graph",
+  "execution_attempts",
+  "pane_pty_generations",
+  "ownership",
+  "worktrees_merge_intents",
+  "leases",
+  "event_bus",
+];
 
 if (!existsSync(sidecar)) {
   throw new Error(`PTY sidecar not found: ${sidecar}\nRun "node scripts/build-pty-sidecar.mjs" first.`);
+}
+if (inputAuthorityToken === token) {
+  throw new Error("scrollback public and input-authority tokens must differ");
 }
 
 async function freePort() {
@@ -63,15 +79,56 @@ async function waitForReady(base) {
   throw new Error(`sidecar did not become ready: ${lastError?.message ?? "unknown"}`);
 }
 
-function startSidecar(port, muxDir, scrollbackDir) {
+async function admitIsolatedSidecar(base) {
+  const epoch = randomUUID();
+  const headers = { "x-aelyris-input-authority": inputAuthorityToken };
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ action: "begin", epoch }),
+  });
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      action: "publish",
+      epoch,
+      report: {
+        phase: "ready",
+        databaseReady: true,
+        sidecarConnected: true,
+        terminalReconciliationComplete: true,
+        adoptedTerminals: 0,
+        restoredSessions: 0,
+        reconciledHandoffs: 0,
+        authorities: startupAuthorities.map((authority) => ({
+          authority,
+          status: "reconciled",
+          observed: 0,
+          reconciled: 0,
+          quarantined: 0,
+          details: [],
+        })),
+        quarantinedTotal: 0,
+        completedAtMs: Date.now(),
+        failureStage: null,
+        failureReason: null,
+      },
+    }),
+  });
+}
+
+function startSidecar(port, muxDir, scrollbackDir, dbPath) {
   const child = spawn(sidecar, [], {
     cwd: root,
     env: {
       ...process.env,
       AELYRIS_API_TOKEN: token,
+      AELYRIS_INPUT_AUTHORITY_TOKEN: inputAuthorityToken,
       AELYRIS_PTY_SERVER_PORT: String(port),
       AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
       AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
+      AELYRIS_DB_PATH: dbPath,
     },
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
@@ -119,6 +176,7 @@ async function main() {
   const tempRoot = join(root, ".codex-auto", "performance", `scrollback-${Date.now()}`);
   const muxDir = join(tempRoot, "mux");
   const scrollbackDir = join(tempRoot, "scrollback");
+  const dbPath = join(tempRoot, "aelyris.db");
   const inputFile = join(tempRoot, "scrollback-burst.txt");
   mkdirSync(muxDir, { recursive: true });
   mkdirSync(scrollbackDir, { recursive: true });
@@ -132,6 +190,7 @@ async function main() {
 
   const report = {
     status: "running",
+    generatedAt: new Date().toISOString(),
     sidecar,
     base,
     checks: [],
@@ -142,9 +201,11 @@ async function main() {
   let proc = null;
 
   try {
-    proc = startSidecar(port, muxDir, scrollbackDir);
+    proc = startSidecar(port, muxDir, scrollbackDir, dbPath);
     await waitForReady(base);
     report.checks.push("daemon-ready");
+    await admitIsolatedSidecar(base);
+    report.checks.push("startup-admission-published");
 
     const created = await request(base, "/sessions", {
       method: "POST",
@@ -197,6 +258,21 @@ async function main() {
       };
       killProcess(proc.child);
     }
+    report.provenance = createEvidenceProvenance({
+      root,
+      verifierPath: "scripts/verify-scrollback-gates.mjs",
+      inputPaths: [
+        "scripts/evidence-provenance.mjs",
+        "scripts/build-pty-sidecar.mjs",
+        "package.json",
+        "src-tauri/pty-server/Cargo.toml",
+        "src-tauri/pty-server/src/main.rs",
+        "src-tauri/src/api/mod.rs",
+        "src-tauri/src/pty/mod.rs",
+        "src-tauri/src/startup_reconciliation.rs",
+      ],
+      generatedAt: report.generatedAt,
+    });
     writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
     if (process.env.AELYRIS_KEEP_SCROLLBACK_TEMP !== "1") {
       rmSync(tempRoot, { recursive: true, force: true });
