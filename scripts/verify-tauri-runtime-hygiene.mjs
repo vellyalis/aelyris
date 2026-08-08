@@ -62,7 +62,16 @@ function discoverTauriDevLogRuns() {
 
 function readLog(relativePath) {
   const path = join(ROOT, relativePath);
-  if (!existsSync(path)) return { path: relativePath, exists: false, crashMatches: [], bytes: 0, mtimeMs: 0 };
+  if (!existsSync(path)) {
+    return {
+      path: relativePath,
+      exists: false,
+      bytes: 0,
+      mtimeMs: 0,
+      crashMatches: [],
+      helperOutputLeaks: [],
+    };
+  }
   const text = readFileSync(path, "utf8");
   const lines = text.split(/\r?\n/);
   return {
