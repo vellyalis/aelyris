@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `APEX V2 MISSION TIME MACHINE`.
-ACTIVE SLICE: `V2-M2`.
-LAST COMPLETED SLICE: `V2-M1`.
-NEXT IMPLEMENTATION SLICE: `V2-M2`.
+ACTIVE SLICE: `V2-M3`.
+LAST COMPLETED SLICE: `V2-M2`.
+NEXT IMPLEMENTATION SLICE: `V2-M3`.
 
 ```yaml
 continuation_contract:
@@ -69,7 +69,8 @@ Current portfolio classification:
 | Apex V1 structured-runtime comparison | **COMPLETE / `promote_none`** | Visible PTY remains Current Best; no candidate produced a bounded material-advantage/admission receipt, so no OpenCode or other runtime, dependency, daemon, adapter, or verifier family was introduced |
 | Apex V2 deterministic Mission replay baseline | **COMPLETE / V2-M0** | One inert canonical projection/hash now reads existing durable Mission, TaskGraph, execution, event, and packet owners; equal scoped facts rebuild identically after restart with zero replay effects |
 | Apex V2 product-accessible Mission replay read | **COMPLETE / V2-M1** | Authenticated MCP now returns the current Mission's deterministic hash, bounded source summary, and zero-effect guarantees while raw Task/execution/event/OID/review/packet values remain closed |
-| Apex V2 historical replay reducer baseline | **ACTIVE / V2-M2** | Reconstruct bounded Mission task-state checkpoints from the immutable plan and Mission-scoped durable event sequence, with current-state convergence and no second history store |
+| Apex V2 historical replay reducer baseline | **COMPLETE / V2-M2** | The immutable plan and Mission-scoped durable event sequence now rebuild bounded task-state checkpoints, packet-backed completion, and one stable timeline hash with current-state convergence and no second history store |
+| Apex V2 product-accessible replay timeline | **ACTIVE / V2-M3** | Expose bounded checkpoint summaries and hashes through authenticated MCP without returning task identities, event payloads, OIDs, packet references, or recovery authority |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2263,7 +2264,7 @@ Status: **COMPLETE**.
 Capability target: one pure bounded reducer that reconstructs the current Mission's
 task lifecycle at each selected durable Mission-event checkpoint and converges on the
 existing current TaskGraph/packet truth.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Seed only from the immutable accepted Mission task plan, then reduce the exact
   Mission-scoped durable event order already selected by V2-M0. Do not read or invent a
@@ -2279,6 +2280,52 @@ Status: **ACTIVE**.
   immutable packet-backed completion state or the replay is inconsistent. The reducer
   performs no Git, PTY, provider, review, merge, settlement, Event ACK, compensation,
   or capability effect.
+
+- Done: the reducer seeds exact immutable Mission tasks as `Pending`, applies the same
+  dependency gate as TaskGraph to derive `Ready`/`Blocked`, then consumes the ordered
+  Mission-scoped durable event sequence. `ExecutionReserved`/`AgentSpawned`,
+  `ReviewRequired`, `TaskCompleted`, `BlockerRaised`, and `EscalationRaised` drive only
+  legal lifecycle transitions; duplicate/regressing event ids, missing task identity,
+  unknown tasks, and illegal jumps fail closed.
+- Done: each checkpoint exposes only relative position, event kind, status counts,
+  completed-work count, packet-backed Mission state, and a canonical hash. The private
+  hash material retains per-task status and seen packet bindings so equal counts with
+  different task truth cannot collide by construction.
+- Done: completion is `completed` only after exact durable WorkPacket references are
+  observed for every Done task plus the matching MissionCompletionPacket event. Done
+  without packet, packet on non-Done task, duplicate/mismatched packet event, or full
+  WorkPacket set without aggregate Mission completion is inconsistent.
+- Done: final reducer state must equal the current TaskGraph and durable packet set.
+  Same-SQLite restart returns the same timeline; replay reads leave TaskGraph, Event
+  frontier, Git, and every runtime/effect owner unchanged.
+- Done: focused CLI-only replay tests passed `8 / 8`, including dependency seeding,
+  Running/Review/Done reduction, packet-backed completion, unknown task, illegal
+  transition, missing packet rejection, finite Event bound, unrelated-event isolation,
+  canonical normalization, and exact restart equality.
+
+### V2-M3 — MCP Mission Replay Timeline Read
+
+Capability target: `Product-Accessible` authenticated bounded inspection of the V2-M2
+historical replay checkpoints for the exact current accepted Mission.
+Status: **ACTIVE**.
+
+- Add one read-only MCP operation accepting only `repoPath` plus an optional server-
+  clamped checkpoint limit. It delegates to the V2-M2 pure reducer and may truncate
+  only the returned checkpoint list, never the source event reduction or final
+  convergence proof.
+- Return exact Mission/plan identity and revision, timeline hash, total/returned
+  checkpoint counts, `hasMore`, bounded checkpoint summaries/hashes, final status
+  counts, final completed-work count, packet-backed Mission state, source aggregates,
+  and explicit zero-effect guarantees.
+- Do not return raw Goal/context, repository path, task identity/payload, execution
+  identity, event id/payload/global sequence, OID, review/evidence, packet identity or
+  contents, commands, provider output, checkpoint private material, or recovery/
+  rollback authority.
+- `not_found`, durability loss, event gap/corruption/bound overflow, illegal transition,
+  unknown task, packet inconsistency, and current-state divergence remain typed non-
+  success. Principal-bound audit stores only one-way digests, aggregate counts,
+  truncation flags, final state, and rejection code; it never replays after audit
+  failure.
 
 ## Deferred After GMV
 
