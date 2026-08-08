@@ -154,6 +154,14 @@ pub(crate) fn cockpit_mission_completion_projection(
     mcp::cockpit_mission_completion_projection(state, repo_path)
 }
 
+pub(crate) fn cockpit_mission_replay_timeline_projection(
+    state: &ApiState,
+    repo_path: String,
+    limit: Option<usize>,
+) -> ApiResult<serde_json::Value> {
+    mcp::cockpit_mission_replay_timeline_projection(state, repo_path, limit)
+}
+
 // ─── State ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

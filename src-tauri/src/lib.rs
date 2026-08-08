@@ -1521,6 +1521,7 @@ pub fn run() {
             ipc::cockpit_mission_current,
             ipc::cockpit_mission_history,
             ipc::cockpit_mission_completion,
+            ipc::cockpit_mission_replay_timeline,
             ipc::mission_plan_accept,
             ipc::mission_plan_reject,
             ipc::mission_plan_cancel,

@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `APEX V2 MISSION TIME MACHINE`.
-ACTIVE SLICE: `V2-M4`.
-LAST COMPLETED SLICE: `V2-M3`.
-NEXT IMPLEMENTATION SLICE: `V2-M4`.
+ACTIVE SLICE: `V2-M5`.
+LAST COMPLETED SLICE: `V2-M4`.
+NEXT IMPLEMENTATION SLICE: `V2-M5`.
 
 ```yaml
 continuation_contract:
@@ -71,7 +71,8 @@ Current portfolio classification:
 | Apex V2 product-accessible Mission replay read | **COMPLETE / V2-M1** | Authenticated MCP now returns the current Mission's deterministic hash, bounded source summary, and zero-effect guarantees while raw Task/execution/event/OID/review/packet values remain closed |
 | Apex V2 historical replay reducer baseline | **COMPLETE / V2-M2** | The immutable plan and Mission-scoped durable event sequence now rebuild bounded task-state checkpoints, packet-backed completion, and one stable timeline hash with current-state convergence and no second history store |
 | Apex V2 product-accessible replay timeline | **COMPLETE / V2-M3** | Authenticated MCP now reduces the full source timeline, then returns a bounded newest checkpoint window with hashes/status counts and no task/event/OID/packet/recovery authority exposure |
-| Apex V2 Cockpit replay timeline | **ACTIVE / V2-M4** | Add one on-demand read-only timeline inside the existing Mission history area, consuming the same safe backend projection without frontend replay or recovery ownership |
+| Apex V2 Cockpit replay timeline | **COMPLETE / V2-M4** | The existing Mission history area now exposes an on-demand bounded replay timeline, canonical hashes, truncation/error states, and zero-effect boundary without frontend replay or recovery ownership |
+| Apex V2 replay checkpoint comparison | **ACTIVE / V2-M5** | Compare two existing canonical checkpoints by backend-owned hashes and safe aggregate deltas without exposing private task/event/packet material or granting restoration authority |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2354,7 +2355,7 @@ Status: **COMPLETE**.
 
 Capability target: one on-demand operator view of the current Mission's deterministic
 checkpoint timeline inside the existing Mission history/receipt Cockpit section.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Reuse the V2-M3 backend projection through one Tauri IPC bridge. Do not create a
   frontend reducer, Mission/task/event store, checkpoint cache, timeline authority,
@@ -2370,6 +2371,47 @@ Status: **ACTIVE**.
 - Loading, empty/not-found, backend-unavailable, inconsistent, and truncated states are
   explicit. Automated verification remains CLI/unit or hidden/non-focusing only; no
   foreground window may be opened or focused.
+
+- Done: one Tauri IPC bridge delegates directly to the V2-M3 projection and is
+  registered beside the existing Mission history/completion commands. It adds no
+  frontend reducer, Mission/event/checkpoint store, cache, route, dashboard, or recovery
+  owner.
+- Done: the existing Mission history panel now contains a second collapsed `Replay
+  timeline` section. Opening Mission history alone performs no replay read; expanding
+  the nested section invokes the backend once and refresh re-reads backend truth.
+- Done: the UI shows timeline hash, total/returned checkpoint counts, truncation state,
+  safe relative checkpoint position/kind, status counts, completed-work count,
+  packet-backed state, checkpoint hashes, final summary, and explicit read-only/
+  deterministic/restart-safe/zero-effect boundary. Copy actions accept only timeline or
+  checkpoint hashes returned by the backend.
+- Done: raw Goal/context, repository path, task/execution identity or payload, event id/
+  payload/global sequence, OID, review/evidence, packet identity/contents, checkpoint
+  private material, and recovery/rollback authority are not rendered or cached.
+- Done: CLI-only frontend tests passed `12 / 12` in the focused Mission history owner;
+  the related fast lane passed `28 / 28`, Rust IPC compile/fmt, MCP owner, Work OS,
+  decision-knowledge, and diff gates passed. No Tauri/WebView/native foreground window
+  was launched.
+
+### V2-M5 — Replay Checkpoint Comparison
+
+Capability target: one pure backend comparison between two already reconstructed V2-M2
+checkpoint hashes from the exact current Mission timeline.
+Status: **ACTIVE**.
+
+- Accept only exact `fromCheckpointHash` and `toCheckpointHash` values that exist in a
+  fresh full V2-M2 reduction for the current Mission. Do not accept positions, event
+  ids, task ids, packet ids, OIDs, paths, or caller-authored checkpoint material.
+- Return Mission/plan identity, timeline hash, direction/order, aggregate task-status
+  count deltas, completed-work delta, packet-backed Mission-state transition, and one
+  canonical comparison hash. Do not expose per-task identity/status, event identity or
+  payload, execution identity, OID, review/evidence, packet reference/content, or
+  private checkpoint hash material.
+- The comparison is read-only and grants no restore/retry/replay execution authority.
+  Unknown/stale/duplicate/reversed-disallowed hashes, timeline drift, inconsistent
+  source reduction, and finite-bound failure remain typed non-success.
+- A later product slice may display the safe comparison inside the existing replay
+  timeline. Recovery planning, worktree creation, compensation, and restoration remain
+  separately gated and may not begin in V2-M5.
 
 ## Deferred After GMV
 

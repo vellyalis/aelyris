@@ -79,7 +79,7 @@ Aelyris treats those concerns as product primitives:
 - Fresh gate execution and independent review.
 - Exact candidate freeze, merge intent, exact-OID merge, immutable settlement, durable completion event, and cleanup.
 - Restart-safe `mission.current`, bounded `mission.history`, and packet-backed `mission.completion` projections.
-- Cockpit Mission history with explicit current/incomplete/completed/inconsistent states and a read-only receipt inspector.
+- Cockpit Mission history with explicit current/incomplete/completed/inconsistent states, a read-only receipt inspector, and an on-demand deterministic replay timeline.
 
 ### Coordination and governance
 

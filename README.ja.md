@@ -79,7 +79,7 @@ Aelyris は、その問題を後付けスクリプトではなく製品の基本
 - fresh gate と独立 review。
 - exact candidate freeze、MergeIntent、exact-OID merge、不変 settlement、durable completion event、cleanup。
 - restart-safe な `mission.current`、bounded `mission.history`、packet-backed `mission.completion`。
-- Cockpit 内の Mission history。現在／未完了／完了／不整合を分け、read-only receipt inspector から不変参照だけを確認可能。
+- Cockpit 内の Mission history。現在／未完了／完了／不整合を分け、read-only receipt inspector と on-demand deterministic replay timeline から安全な参照／checkpoint hash だけを確認可能。
 
 ### Coordination と Governance
 

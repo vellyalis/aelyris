@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { MissionReplayTimelineSection } from "./MissionReplayTimelineSection";
 import { MissionReceiptInspector } from "./MissionReceiptInspector";
 import styles from "./OrchestratorPanel.module.css";
 
@@ -379,6 +380,8 @@ export function MissionHistorySection({ repoPath }: MissionHistorySectionProps) 
             Clipboard access was refused. The digest was not copied.
           </p>
         ) : null}
+
+        <MissionReplayTimelineSection repoPath={repoPath} />
 
         {receiptSelection ? (
           <MissionReceiptInspector

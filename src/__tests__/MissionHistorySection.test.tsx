@@ -117,6 +117,87 @@ const completedReceipt = {
   },
 };
 
+const timelineHash = "e".repeat(64);
+const checkpointHashOne = "f".repeat(64);
+const checkpointHashTwo = "1".repeat(64);
+
+const replayExposure = {
+  repositoryPathExposed: false,
+  rawGoalOrContextExposed: false,
+  taskIdentityOrPayloadExposed: false,
+  executionIdentityExposed: false,
+  eventIdentityOrPayloadExposed: false,
+  globalEventSequenceExposed: false,
+  oidValuesExposed: false,
+  reviewOrEvidenceExposed: false,
+  packetIdentityOrContentsExposed: false,
+  checkpointPrivateMaterialExposed: false,
+  recoveryOrRollbackAuthorityExposed: false,
+};
+
+const replayTimeline = {
+  schema: "aelyris.mission-replay-timeline-read/v1",
+  outcome: "ok",
+  found: true,
+  requestedLimit: 20,
+  effectiveLimit: 20,
+  timeline: {
+    mission: {
+      missionId: baseHistory.entries[0].missionId,
+      missionRevision: 1,
+      planId: baseHistory.entries[0].planId,
+      planRevision: 1,
+      status: "accepted",
+    },
+    timelineHash,
+    totalCheckpointCount: 4,
+    returnedCheckpointCount: 2,
+    returnedStartPosition: 2,
+    hasMore: true,
+    checkpoints: [
+      {
+        position: 2,
+        eventKind: "execution_reserved",
+        taskStatusCounts: { running: 1 },
+        completedWorkCount: 0,
+        packetBackedMissionState: "incomplete",
+        checkpointHash: checkpointHashOne,
+      },
+      {
+        position: 3,
+        eventKind: "review_required",
+        taskStatusCounts: { review: 1 },
+        completedWorkCount: 0,
+        packetBackedMissionState: "incomplete",
+        checkpointHash: checkpointHashTwo,
+      },
+    ],
+    finalTaskStatusCounts: { review: 1 },
+    finalCompletedWorkCount: 0,
+    finalPacketBackedMissionState: "incomplete",
+    source: {
+      taskCount: 1,
+      executionCount: 1,
+      durableEventCount: 3,
+      durableEventScannedCount: 5,
+      durableEventHighWaterSeq: 42,
+      workPacketCount: 0,
+      missionCompletionPacketPresent: false,
+    },
+    guarantees: {
+      readOnly: true,
+      deterministic: true,
+      restartSafe: true,
+      sideEffectCount: 0,
+      secondJournalUsed: false,
+      secondTaskGraphUsed: false,
+      secondPacketStoreUsed: false,
+      replayCacheUsed: false,
+    },
+  },
+  exposure: replayExposure,
+};
+
 describe("MissionHistorySection", () => {
   beforeEach(() => {
     tauriMocks.invoke.mockReset();
@@ -133,7 +214,7 @@ describe("MissionHistorySection", () => {
   it("stays on demand until the operator expands the existing cockpit section", () => {
     render(<MissionHistorySection repoPath="C:/repo" />);
     expect(screen.getByText("Mission history")).toBeTruthy();
-    expect(screen.getByText("On demand")).toBeTruthy();
+    expect(screen.getAllByText("On demand")).toHaveLength(2);
     expect(tauriMocks.invoke).not.toHaveBeenCalled();
   });
 
@@ -332,5 +413,150 @@ describe("MissionHistorySection", () => {
     fireEvent.click(screen.getByText("Mission history"));
     expect(await screen.findByText("History unavailable")).toBeTruthy();
     expect(screen.getByText("Mission history durability is unavailable")).toBeTruthy();
+  });
+
+  it("keeps replay collapsed and performs no replay read when only Mission history opens", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    render(<MissionHistorySection repoPath="C:/repo" />);
+    fireEvent.click(screen.getByText("Mission history"));
+
+    expect(await screen.findByText("Replay timeline")).toBeTruthy();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith(
+      "cockpit_mission_replay_timeline",
+      expect.anything(),
+    );
+  });
+
+  it("reads and renders only the backend-projected replay checkpoint window on demand", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      if (command === "cockpit_mission_replay_timeline") return Promise.resolve(replayTimeline);
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    render(<MissionHistorySection repoPath="C:/repo" />);
+    fireEvent.click(screen.getByText("Mission history"));
+    fireEvent.click(await screen.findByText("Replay timeline"));
+
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenCalledWith("cockpit_mission_replay_timeline", {
+        repoPath: "C:/repo",
+        limit: 20,
+      }),
+    );
+    expect(await screen.findByText(timelineHash.slice(0, 16))).toBeTruthy();
+    expect(screen.getByText("execution reserved")).toBeTruthy();
+    expect(screen.getByText("review required")).toBeTruthy();
+    expect(screen.getByText("1 running")).toBeTruthy();
+    expect(screen.getAllByText("1 review").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Read-only · deterministic · restart-safe · 0 replay effects/i)).toBeTruthy();
+    expect(screen.queryByText(/timeline-private-task/i)).toBeNull();
+    expect(screen.queryByText(/hidden-attempt/i)).toBeNull();
+  });
+
+  it("copies only backend-returned timeline and checkpoint hashes", async () => {
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      if (command === "cockpit_mission_replay_timeline") return Promise.resolve(replayTimeline);
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    render(<MissionHistorySection repoPath="C:/repo" />);
+    fireEvent.click(screen.getByText("Mission history"));
+    fireEvent.click(await screen.findByText("Replay timeline"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Copy timeline hash" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(timelineHash));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Copy checkpoint hash" })[0]);
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(checkpointHashOne));
+  });
+
+  it("loads older checkpoints explicitly and shows truthful not-found and failure states", async () => {
+    const expandedTimeline = {
+      ...replayTimeline,
+      requestedLimit: 40,
+      effectiveLimit: 40,
+      timeline: {
+        ...replayTimeline.timeline,
+        returnedCheckpointCount: 4,
+        returnedStartPosition: 0,
+        hasMore: false,
+        checkpoints: [
+          {
+            position: 0,
+            eventKind: "mission_accepted",
+            taskStatusCounts: { ready: 1 },
+            completedWorkCount: 0,
+            packetBackedMissionState: "incomplete",
+            checkpointHash: "2".repeat(64),
+          },
+          {
+            position: 1,
+            eventKind: "task_created",
+            taskStatusCounts: { ready: 1 },
+            completedWorkCount: 0,
+            packetBackedMissionState: "incomplete",
+            checkpointHash: "3".repeat(64),
+          },
+          ...replayTimeline.timeline.checkpoints,
+        ],
+      },
+    };
+    tauriMocks.invoke.mockImplementation((command: string, args?: { limit?: number }) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      if (command === "cockpit_mission_replay_timeline") {
+        return Promise.resolve(args?.limit === 40 ? expandedTimeline : replayTimeline);
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    const first = render(<MissionHistorySection repoPath="C:/repo" />);
+    fireEvent.click(screen.getByText("Mission history"));
+    fireEvent.click(await screen.findByText("Replay timeline"));
+    fireEvent.click(await screen.findByRole("button", { name: "Load older checkpoints" }));
+    await waitFor(() =>
+      expect(tauriMocks.invoke).toHaveBeenLastCalledWith("cockpit_mission_replay_timeline", {
+        repoPath: "C:/repo",
+        limit: 40,
+      }),
+    );
+    expect(await screen.findByText("4 checkpoints")).toBeTruthy();
+    first.unmount();
+
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      if (command === "cockpit_mission_replay_timeline") {
+        return Promise.resolve({
+          ...replayTimeline,
+          outcome: "not_found",
+          found: false,
+          timeline: null,
+          notFound: {
+            code: "accepted_cockpit_mission_not_found",
+            syntheticTimelineCreated: false,
+          },
+        });
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    const second = render(<MissionHistorySection repoPath="C:/empty" />);
+    fireEvent.click(screen.getByText("Mission history"));
+    fireEvent.click(await screen.findByText("Replay timeline"));
+    expect(await screen.findByText("No accepted Mission is available for replay.")).toBeTruthy();
+    second.unmount();
+
+    tauriMocks.invoke.mockImplementation((command: string) => {
+      if (command === "cockpit_mission_history") return Promise.resolve(baseHistory);
+      if (command === "cockpit_mission_replay_timeline") {
+        return Promise.reject(new Error("Mission replay timeline is inconsistent"));
+      }
+      return Promise.reject(new Error(`unexpected command ${command}`));
+    });
+    render(<MissionHistorySection repoPath="C:/broken" />);
+    fireEvent.click(screen.getByText("Mission history"));
+    fireEvent.click(await screen.findByText("Replay timeline"));
+    expect(await screen.findByText("Replay unavailable")).toBeTruthy();
+    expect(screen.getByText("Mission replay timeline is inconsistent")).toBeTruthy();
   });
 });
