@@ -25,6 +25,7 @@ pub mod knowledge_graph;
 pub mod logging;
 pub mod lsp;
 pub mod merge_intent;
+pub mod mission_replay;
 pub mod mux;
 pub mod orchestrator;
 pub mod persistence;

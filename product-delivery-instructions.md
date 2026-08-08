@@ -4,9 +4,9 @@ STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
 CURRENT PHASE: `APEX V2 MISSION TIME MACHINE`.
-ACTIVE SLICE: `V2-M0`.
-LAST COMPLETED SLICE: `V1-R0`.
-NEXT IMPLEMENTATION SLICE: `V2-M0`.
+ACTIVE SLICE: `V2-M1`.
+LAST COMPLETED SLICE: `V2-M0`.
+NEXT IMPLEMENTATION SLICE: `V2-M1`.
 
 ```yaml
 continuation_contract:
@@ -67,7 +67,8 @@ Current portfolio classification:
 | Cockpit Mission history and receipt inspector | **COMPLETE** | The existing Orchestrator panel now reads the same bounded history and current immutable receipt projections as MCP, with explicit incomplete/completed/inconsistent states and no frontend completion authority |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
 | Apex V1 structured-runtime comparison | **COMPLETE / `promote_none`** | Visible PTY remains Current Best; no candidate produced a bounded material-advantage/admission receipt, so no OpenCode or other runtime, dependency, daemon, adapter, or verifier family was introduced |
-| Apex V2 deterministic Mission replay baseline | **ACTIVE / V2-M0** | Build one inert canonical projection/hash from existing durable Mission, TaskGraph, execution, event, and packet owners; replay must remain read-only and restart-stable |
+| Apex V2 deterministic Mission replay baseline | **COMPLETE / V2-M0** | One inert canonical projection/hash now reads existing durable Mission, TaskGraph, execution, event, and packet owners; equal scoped facts rebuild identically after restart with zero replay effects |
+| Apex V2 product-accessible Mission replay read | **NEXT / V2-M1** | Expose the V2-M0 hash and bounded source summary through one authenticated read-only MCP projection without exposing raw Mission/task/event/packet payloads |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2188,7 +2189,7 @@ Status: **COMPLETE / `promote_none`**.
 Capability target: an inert, restart-stable canonical projection of one current
 accepted Mission from existing durable owners, producing one stable replay hash with
 zero runtime/Git/review/merge/settlement effects.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Build over the existing Mission/TaskGraph, `WorkExecutionAttempt`, durable Event Bus,
   `CompletedWorkPacket`, and `MissionCompletionPacket` owners. Do not create a second
@@ -2204,6 +2205,40 @@ Status: **ACTIVE**.
 - The first slice is an internal runtime baseline, not a Time Machine UI or destructive
   rollback feature. Product history scrub, checkpoint selection, recovery worktrees,
   compensation, and uncertain-effect reconciliation remain later bounded slices.
+
+- Done: `mission_replay::replay_current_mission` now derives one domain-separated
+  canonical hash from the exact current accepted Mission, its scoped TaskGraph rows,
+  latest durable execution generations, Mission-linked durable events, validated
+  CompletedWorkPackets, and the aggregate MissionCompletionPacket when present.
+- Done: semantically set-like Task arrays and execution ownership ids are normalized;
+  unrelated durable events are scanned for stream integrity but excluded from the
+  Mission hash, and selected events use relative Mission order rather than global
+  sequence numbers.
+- Done: the pure replay builder appends no audit row and invokes no Git, PTY, provider,
+  review, merge, Event ACK, settlement, compensation, or capability owner. Its
+  machine-readable guarantees report `sideEffectCount:0` and every second-owner/cache
+  flag false.
+- Done: focused CLI-only tests passed `4 / 4`: canonical key order, set-like array
+  normalization, finite event-bound rejection, unrelated-event isolation, read-only
+  behavior, and exact same-SQLite restart equality.
+
+### V2-M1 — MCP Mission Replay Read
+
+Capability target: `Product-Accessible` authenticated readback of the current Mission's
+deterministic V2-M0 replay hash and bounded source summary.
+Status: **NEXT**.
+
+- Add one read-only MCP tool accepting only `repoPath`. It delegates directly to the
+  V2-M0 pure builder over the existing TaskManager and durable Event Bus owners.
+- Return exact Mission/plan identity and revision, replay hash, bounded source counts,
+  event frontier, and explicit zero-effect/second-owner guarantees. Do not return raw
+  Goal/context, repository paths, Task payloads, execution identities, event payloads,
+  OIDs, review evidence, packet ids, or packet contents.
+- `not_found`, durability loss, stream gap/corruption, event-bound overflow, ambiguous
+  scope, and packet inconsistency remain typed non-success. Never return a partial hash.
+- Principal-bound read audit may record actor, one-way repository/input digest, outcome,
+  replay-hash digest, aggregate counts, and rejection code only. The audit wrapper may
+  not alter the V2-M0 projection or replay the operation after audit failure.
 
 ## Deferred After GMV
 
