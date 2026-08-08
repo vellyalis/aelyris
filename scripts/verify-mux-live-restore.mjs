@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, join } from "node:path";
@@ -11,7 +12,22 @@ const sidecar =
   join(root, "src-tauri", "pty-server", "target", "release", `aelyris-pty-server${extension}`);
 const out = process.env.AELYRIS_MUX_LIVE_OUT ?? join(root, ".codex-auto", "performance", "mux-live-restore-smoke.json");
 const token = process.env.AELYRIS_MUX_LIVE_TOKEN ?? "mux-live-restore-smoke-token";
+const inputAuthorityToken =
+  process.env.AELYRIS_MUX_LIVE_INPUT_AUTHORITY_TOKEN ?? `mux-live-input-${randomUUID()}`;
 const cargoManifest = join(root, "src-tauri", "Cargo.toml");
+const startupAuthorities = [
+  "task_graph",
+  "execution_attempts",
+  "pane_pty_generations",
+  "ownership",
+  "worktrees_merge_intents",
+  "leases",
+  "event_bus",
+];
+
+if (inputAuthorityToken === token) {
+  throw new Error("mux live public and input-authority tokens must differ");
+}
 
 class HostCapabilityBlockedError extends Error {
   constructor(capability, message, details = {}) {
@@ -117,7 +133,46 @@ async function waitForReady(base) {
   throw new Error(`sidecar did not become ready: ${lastError?.message ?? "unknown"}`);
 }
 
-function startSidecar(port, muxDir, scrollbackDir, phase) {
+async function admitIsolatedSidecar(base) {
+  const epoch = randomUUID();
+  const headers = { "x-aelyris-input-authority": inputAuthorityToken };
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ action: "begin", epoch }),
+  });
+  await request(base, "/internal/startup-admission", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      action: "publish",
+      epoch,
+      report: {
+        phase: "ready",
+        databaseReady: true,
+        sidecarConnected: true,
+        terminalReconciliationComplete: true,
+        adoptedTerminals: 0,
+        restoredSessions: 0,
+        reconciledHandoffs: 0,
+        authorities: startupAuthorities.map((authority) => ({
+          authority,
+          status: "reconciled",
+          observed: 0,
+          reconciled: 0,
+          quarantined: 0,
+          details: [],
+        })),
+        quarantinedTotal: 0,
+        completedAtMs: Date.now(),
+        failureStage: null,
+        failureReason: null,
+      },
+    }),
+  });
+}
+
+function startSidecar(port, muxDir, scrollbackDir, dbPath, phase) {
   let child;
   try {
     child = spawn(sidecar, [], {
@@ -125,9 +180,11 @@ function startSidecar(port, muxDir, scrollbackDir, phase) {
       env: {
         ...process.env,
         AELYRIS_API_TOKEN: token,
+        AELYRIS_INPUT_AUTHORITY_TOKEN: inputAuthorityToken,
         AELYRIS_PTY_SERVER_PORT: String(port),
         AELYRIS_MUX_SNAPSHOT_DIR: muxDir,
         AELYRIS_PTY_SCROLLBACK_DIR: scrollbackDir,
+        AELYRIS_DB_PATH: dbPath,
       },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
@@ -376,6 +433,7 @@ async function main() {
   const tempRoot = join(root, ".codex-auto", "performance", `mux-live-${Date.now()}`);
   const muxDir = join(tempRoot, "mux");
   const scrollbackDir = join(tempRoot, "scrollback");
+  const dbPath = join(tempRoot, "aelyris.db");
   mkdirSync(muxDir, { recursive: true });
   mkdirSync(scrollbackDir, { recursive: true });
 
@@ -418,13 +476,15 @@ async function main() {
     assertNodeChildProcessAvailable();
     report.checks.push("host-node-child-process-preflight");
 
-    first = startSidecar(port, muxDir, scrollbackDir, "first-sidecar-launch");
+    first = startSidecar(port, muxDir, scrollbackDir, dbPath, "first-sidecar-launch");
     const firstContract = await waitForReady(base);
     assertDaemonContract(firstContract, "first-run");
     report.firstContract = firstContract;
     report.checks.push("daemon-ready");
     report.checks.push("daemon-contract-policies-machine-readable");
     report.checks.push("terminal-core-policy-machine-readable");
+    await admitIsolatedSidecar(base);
+    report.checks.push("first-startup-admission-published");
     const aelysContract = runAelys(base, ["daemon"]);
     assertDaemonContract(aelysContract, "aelys");
     assert(
@@ -592,12 +652,14 @@ async function main() {
     first = null;
     report.checks.push("daemon-stopped-for-restore");
 
-    second = startSidecar(port, muxDir, scrollbackDir, "second-sidecar-launch");
+    second = startSidecar(port, muxDir, scrollbackDir, dbPath, "second-sidecar-launch");
     const secondContract = await waitForReady(base);
     assertDaemonContract(secondContract, "second-run");
     report.secondContract = secondContract;
     report.checks.push("daemon-contract-stable-after-restart");
     report.checks.push("terminal-core-policy-stable-after-restart");
+    await admitIsolatedSidecar(base);
+    report.checks.push("second-startup-admission-published");
     graph = await request(base, `/mux/workspaces/${workspaceId}`);
     assert(paneIds(graph).length === 2, "restored mux graph should keep two panes");
     assert(
