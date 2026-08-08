@@ -2,407 +2,221 @@
 
 # Aelyris
 
-![AI coding agents working in parallel inside Aelyris's visible split panes — four interactive agent CLIs coordinating on separate tasks alongside a shell, with the project file tree on the left and the orchestrator rail on the right](docs/assets/hero-fleet.png)
+![Aelyris running visible AI coding-agent panes beside the project tree and Mission cockpit](docs/assets/hero-fleet.png)
 
-**Mission control for a fleet of AI coding agents — on your own machine.**
-Aelyris runs many coding agents in parallel: each one lives in its own
-**visible terminal pane**, works on its own **git worktree**, is coordinated
-down to the **function level**, and reaches your main branch only through
-**commit-bound, auditable merge gates**. The terminal, the multiplexer, and
-the agent control plane underneath are not wrappers around existing tools —
-they are written from scratch in Rust for exactly this job.
+**Verifiable mission control for AI coding agents — local-first, visible, and exact-OID.**
 
-> **Alpha — active development, not yet stable for release.** One discipline
-> shapes everything here: **a capability is not claimed until a verifier you
-> can run yourself proves it.** This README separates *shipped* from *planned*
-> on purpose, and the bigger product claims stay blocked behind gates (live
-> durability, restart/replay, native visual quality, signing/updater, external
-> operator validation) until those gates go green.
+Aelyris turns a plain-language development goal into a durable **Mission**. The backend owns planning, TaskGraph state, visible PTY execution, independent review, exact-commit merge, immutable completion packets, and restart recovery. Operators can watch the real agent terminals, intervene when needed, and inspect the durable evidence afterward.
+
+> **Alpha — active development, not release-ready.**
+> Aelyris does not turn a focused test into a marketing claim. Product and release claims stay behind runnable verifiers, exact Git provenance, and explicit operator/external gates.
+
+## The verified Mission path
+
+```text
+plain-language Goal
+        ↓
+backend-owned planner
+        ↓
+durable Mission + TaskGraph
+        ↓
+visible AI CLI in an isolated git worktree
+        ↓
+fresh project gates
+        ↓
+fixed independent reviewer
+        ↓
+exact-OID merge
+        ↓
+CompletedWorkPacket + MissionCompletionPacket
+        ↓
+restart-safe current state, history, and completion receipt
+```
+
+This path has been exercised with a real Codex worker, visible PTY implementation, independent review, exact-OID merge, immutable settlement, worktree reclamation, and same-SQLite restart recovery. The Cockpit and MCP surfaces project the same backend owners; neither is allowed to invent a verdict, candidate OID, packet, or completion state.
 
 ## At a glance
 
-| Pillar | What you get | Status |
-| --- | --- | --- |
-| **One pane = one agent** | Every agent is a real, interactive AI CLI in a visible terminal pane — watch it scroll, steer it mid-run, debug from the actual session | Shipped |
-| **A multiplexer rebuilt for a fleet** | Panes, splits, a real layout engine, sessions that can outlive the app — written from scratch in Rust for many long-running, supervised agents | Shipped |
-| **Function-level conflict avoidance** | Ownership is tracked per symbol: agents owning disjoint functions run in parallel; overlapping work serializes automatically | Shipped (parser-backed; LSP tier planned) |
-| **Commit-bound review & merge** | Approval binds to the exact commit (old-OID compare-and-swap); mechanical build/test/lint gates can block a merge even after a human approves | Shipped |
-| **One capability surface, two faces** | The cockpit UI and a 60+ verb typed MCP control plane drive the same core — drift-tested, governed, audit-trailed | Shipped |
+| Area | Alpha capability |
+| --- | --- |
+| **Visible agent work** | One real interactive AI CLI per pane, observable and steerable while it runs |
+| **Isolation** | Each orchestrated worker uses its own Git worktree and declared output/ownership lane |
+| **Durable Missions** | Goal, plan, TaskGraph, execution state, review lineage, settlement packets, and current Mission restore from SQLite |
+| **Review and merge authority** | Fixed independent review, mechanical gates, exact-candidate binding, old-OID compare-and-swap merge |
+| **Completion truth** | A task is not complete without its immutable `CompletedWorkPacket`; aggregate completion requires `MissionCompletionPacket` |
+| **Mission history** | Bounded newest-first history distinguishes the current incomplete Mission from prior packet-backed completion |
+| **Two product faces** | Human Cockpit and typed MCP/JSON-RPC control plane over the same Rust owners and governance boundary |
+| **Native terminal substrate** | Rust-owned ConPTY sessions, input, clipboard, IME, scrollback, pane graph, and session lifecycle |
+| **Windows packaging** | Local unsigned EXE, NSIS, and MSI smoke artifacts; formal signing/publication remains gated |
 
-Every row names an architectural property with a runnable check behind it —
-see [Verification](#verification).
+## Why Aelyris
 
-Current machine truth is generated, not copied into this stable README. Run
-`pnpm verify:quality-score` and read
-`.codex-auto/quality/release-quality-score.json`; regenerate the aggregate safe
-chain before making a current readiness claim. The final-goal audit is
-downstream and does not feed points back into the score. A focused proof-registry
-PASS is not release readiness.
-`authenticated-ai-cli-prompt-smoke` requires
-`authenticated-ai-cli-consent-packet` and
-`AELYRIS_AUTH_PROMPT_PROVIDER=codex|claude|gemini`.
-`pnpm verify:goal:finalize` excludes git finalization by default;
-`AELYRIS_GOAL_FINALIZE_INCLUDE_GIT=1` is
-optional, and git is not required for product/safe/finalize evidence. Aelyris
-remains alpha and not release-ready.
+Running several coding agents is easy. Knowing what each agent is doing, keeping their changes separate, proving what was tested, and merging only the reviewed commit is the hard part.
 
-## Why now
+Aelyris treats those concerns as product primitives:
 
-AI made writing code the easy part. The bottleneck has moved: it is no longer
-*writing* the code, it is **running many coding agents at once without them
-stepping on each other — and trusting what they produced enough to ship it.**
+- **Visible instead of hidden** — the real agent session is the operator surface and the debugging record.
+- **Project-first instead of chat-first** — Missions bind work to a repository, TaskGraph, branches, outputs, evidence, and Git identity.
+- **Backend-owned authority** — the AI may request planning, execution, or review, but it cannot author its own verdict, merge token, or completion packet.
+- **Exact evidence instead of labels** — “done” is not a string on a card; it is a validated packet lineage tied to the exact integrated OID.
+- **Provider-neutral by design** — visible PTY remains the current best execution path. OpenCode or another structured runtime is not required and is admitted only if it proves a material advantage without duplicating Aelyris owners.
+- **Local-first** — terminals, worktrees, SQLite state, audit, and control surfaces run on the operator’s machine.
 
-Point several agents at one repository the naive way and you get chaos: the
-same files edited twice, work silently overwritten, no record of who changed
-what. The common answers are worse than the problem — run one agent at a time,
-or fan agents out as *invisible* background jobs, which is exactly what a
-non-engineer can't supervise and an engineer can't debug.
+## What works today
 
-Aelyris takes a different position: parallel AI development should be
-**visible, coordinated, and reviewable by construction**. Work you can watch
-and check, not work you have to blindly trust — with the plumbing bundled so
-an engineer never hand-wires it and a non-engineer never has to learn it.
+### Visible terminal fleet
 
-## Naming
+- Compatible coding-agent CLI processes run inside visible terminal panes. Codex has current real-provider Mission evidence; provider-specific parity remains separately gated.
+- Each pane is backed by Rust-owned native session state rather than scraped browser terminal text.
+- The multiplexer owns workspace/window/tab/pane topology, splits, zoom, synchronized input, bounded capture, scrollback, and restart adoption.
+- Agent and terminal lifecycle reads are value-minimized; raw scrollback is exposed only through the explicitly sensitive terminal-capture boundary.
 
-- Product: **Aelyris**, read as **Aelys** (エイリス).
-- CLI / short name: `aelys`.
-- Feature families: **Aelyris Core**, **Aelyris Grid**, **Aelyris Pane**.
-- Coordination engine: **Qralis**.
+### Durable Mission OS
 
-## What it does today
+- Plain-language Goal planning through the backend-owned planner.
+- Atomic Mission + TaskGraph acceptance.
+- Visible work dispatch through the existing PaneFleet and worktree owners.
+- Fresh gate execution and independent review.
+- Exact candidate freeze, merge intent, exact-OID merge, immutable settlement, durable completion event, and cleanup.
+- Restart-safe `mission.current`, bounded `mission.history`, and packet-backed `mission.completion` projections.
+- Cockpit Mission history with explicit current/incomplete/completed/inconsistent states and a read-only receipt inspector.
 
-These are real, shipped capabilities. The single strong factual claim Aelyris
-makes is that it has a working Rust/Tauri terminal, mux, sidecar,
-visible-agent, MCP, worktree, ownership, review, and merge substrate — each
-section below is part of that substrate and backed by a runnable verifier.
+### Coordination and governance
 
-### One pane = one agent (visible, not hidden)
+- File and symbol ownership with conflict detection and leases.
+- Shared decisions, typed intents, durable events, blockers, activity, and knowledge-graph impact queries.
+- Principal-scoped discovery and authorization.
+- Payload-minimized audit for mutations and coordination reads.
+- Cost caps and honest fail-closed admission when a configured usage axis is not owned by trustworthy telemetry.
 
-Each agent runs as a **real, interactive AI CLI in its own visible terminal
-pane** — not as an opaque background "subagent" you can't see. This is the
-core design choice, and it pays off four ways:
+### AI self-operation
 
-- **Observability** — you watch the actual session scroll by, exactly as the
-  agent sees it.
-- **Steering** — you can redirect a *running* agent mid-flight (e.g. away from
-  specific files) instead of waiting for a black box to finish.
-- **Trust** — you ship work you actually watched happen, not output a hidden
-  swarm asserts is fine.
-- **Debuggability** — when something goes wrong, the real terminal session
-  *is* the log.
+The supported Mission sequence is available through typed MCP tools:
 
-When you launch an agent against a named branch, it gets its **own git
-worktree**, so parallel agents never share a working tree.
+```text
+aelyris.mission.plan
+aelyris.mission.current
+aelyris.mission.run_next
+aelyris.mission.review_and_settle
+aelyris.mission.completion
+aelyris.mission.history
+```
 
-### A native terminal multiplexer, rebuilt for a fleet
+The caller supplies only the bounded identity or Goal fields required for each step. Planner selection, TaskGraph authority, reviewer identity, verdict, candidate OID, merge authority, and packet creation remain backend-owned.
 
-The terminal layer is **not a wrapper around an existing multiplexer** —
-panes, splits, persistent sessions, and the layout model are written from
-scratch in Rust, designed from the start for many long-running, supervised
-agents rather than one person at a keyboard:
+## Honest boundaries
 
-- **A real layout engine** — a workspace → window → tab → pane graph over a
-  binary split tree: split, close, swap, move, rotate, zoom, balanced tiling,
-  even/equalize, synchronized input across panes, plus
-  break-a-pane-to-its-own-tab and join-back.
-- **A prefix-key binding engine** — a familiar "one prefix chord, then a
-  command key" model that resolves into pane and window commands, with
-  rebindable, conflict-checked bindings (execution is wired in the UI).
-- **Sessions that can outlive the app** — long-running terminals can be hosted
-  by an out-of-process daemon kept deliberately outside the app's
-  kill-on-close job, so it survives an app restart (or crash) and is
-  re-adopted on the next launch. The in-process path rebuilds the **full pane
-  layout** from an atomic per-workspace snapshot and backfills **file-backed
-  scrollback**, so a restored pane comes back with its history rather than
-  blank.
-- **Native, no-orphan process ownership** — every pane is a real native
-  session (ConPTY on Windows) under Rust-owned input, clipboard, and IME, and
-  every spawned child is placed in a kill-on-close job so an agent CLI can
-  never be left orphaned.
+Aelyris is still alpha.
 
-This is the substrate the visible panes live in — a multiplexer whose design
-choices (durable sessions, structured layout state, no orphaned processes)
-only make sense if you assume persistent, observed, parallel work.
+- Formal **Authenticode**, updater signing, `.sig`/`latest.json`, publication, and update-endpoint evidence are not closed.
+- Real installer install/relaunch/upgrade/rollback certification is still an operator gate.
+- Real Windows sleep/resume and selected external A9 certification remain separate evidence.
+- The current UI is Tauri/React/WebView2 around a native Rust terminal/runtime substrate. Full-native UI migration is parked until the reusable **Alyce** framework and its activation evidence are ready.
+- Conflict avoidance protects Aelyris-owned orchestration lanes; arbitrary external Git edits can bypass those controls.
+- Aelyris coordinates existing coding-agent CLIs; it does not replace the models or the operator’s final judgment.
+- Windows is the primary supported platform today.
 
-### Function-level conflict avoidance ("shared brain")
+## Roadmap direction
 
-Many agents can work the **same codebase in parallel without clobbering each
-other**, because ownership is tracked not just per file but **per symbol
-(down to the function)**:
+The immediate order is value-first:
 
-- A claim carries an inclusive line range, a **lease** (a crashed agent's
-  claims self-release), and a **confidence tier**: parser-backed exact ranges
-  hard-block on overlap, while inferred diff-hunk ranges only warn.
-- Orchestrated lanes are conflict-aware: **disjoint symbols run in parallel;
-  overlapping work is serialized automatically.** Two agents may edit the
-  *same file* as long as they own different functions.
-- A code knowledge-graph core answers "if this module changes, what's the
-  blast radius?" (the transitive set of dependent modules), so coordination
-  reasons about structure, not just filenames.
-
-*Today:* exact ranges are tree-sitter parser-backed and impact analysis is
-module-level. *Planned:* an LSP-backed exact tier and symbol-level blast
-radius.
-
-### Auditable review and commit-bound merge
-
-Nothing reaches your main branch unsupervised:
-
-- Worktree diff review plus **mechanical pre-merge gates** — objective
-  build / test / lint commands run in the task's worktree and can block a
-  merge *even after a human approves*.
-- An approval is **bound to the exact commit** it was granted against. The git
-  update uses an old-OID compare-and-swap, so a branch tip that moved
-  underneath is rejected, never silently merged.
-
-### One capability surface, two faces
-
-Everything Aelyris can do lives in **one backend capability layer** with two
-faces over it: the **cockpit UI** a human drives, and a **JSON-RPC (MCP)
-control plane** an orchestrating AI — or a plain script — drives. Both talk to
-the same core, so what you can do by hand and what an agent can do by call
-stay in lockstep, against structured state rather than scraped terminal text.
-
-The control plane is **60+ typed verbs**, each wired to a real backend
-module — a drift test asserts the catalog and the JSON schemas list the
-*identical* set, and any verb without a handler is rejected at dispatch, so
-nothing is advertised that isn't implemented. The surface spans:
-
-- **Terminal & multiplexer** — list sessions, capture bounded scrollback, read
-  the workspace graph, send guarded input to live panes.
-- **Worktree & fleet** — validate / create / remove git worktrees; route,
-  spawn, stop, and steer agents; read live fleet status.
-- **Coordination** — file- and **symbol-level** ownership (claim / refresh /
-  release, with conflicts), a **knowledge-graph blast-radius** query, a shared
-  project-decision (ADR) store, a typed **intent bus**, and a no-loss **event
-  stream** that survives restart.
-- **Review & merge** — request approval, list pending decisions, and a
-  **durable, commit-bound merge intent** whose approval call takes *only* an
-  intent id, so it can never be re-pointed at a different repo or branch.
-- **Shared-brain snapshot** — one call returns the whole picture: live agents,
-  activity, ownership, unresolved merges, blockers, and project decisions.
-
-Every verb passes through a single **governance authorization** choke point
-(today a local single-operator allow-all seam an enterprise build can swap for
-RBAC without touching a handler), privileged actions are **risk-classified**
-around shell and file commands — including the input an agent CLI receives —
-and the whole stream lands in an **event/audit trail**.
-
-Around all of this sits the rest of the workspace: a Monaco editor with Vim
-mode, a file tree, search, Git and worktree tooling, and a pull-request
-inspector.
-
-It is **local-first**: this runs on your machine, not a hosted dashboard.
-
-### Who this is for
-
-- **Engineers** get fast, safe parallel agent development without hand-wiring
-  worktrees, locks, gates, and audit — the low-level plumbing is bundled.
-- **Non-engineers** (the "vibe coding" wave) get the same plumbing as
-  **guardrails**: the review/merge gates, audit trail, and function-level
-  conflict avoidance are the safety net that helps make work visible and
-  reviewable for someone who *can't* self-review — a safety net, not a
-  safe-to-ship guarantee.
-
-## What is coming next
-
-The items below are a **roadmap of planned work**, not shipped capabilities.
-They are tracked under the same verifier discipline as everything else, and
-each is labeled *planned* on purpose to keep the line between done and
-intended clear.
-
-**Symbol intelligence (planned)**
-
-- **LSP-backed exact symbol extraction** — extraction today is
-  parser/tree-sitter based; a planned LSP `documentSymbol` tier would give
-  exact symbol boundaries.
-- **Symbol-level knowledge-graph blast-radius** — impact analysis is
-  module-level today; per-symbol blast-radius is planned.
-- **LSP go-to-definition, diagnostics, and find-references** — editor
-  intelligence is currently partial (completion and hover only); these are
-  planned.
-
-**Shared brain and session state (planned)**
-
-- **Live shared-brain population from real repo sources** — the
-  knowledge-graph and impact-analysis core exists and is unit-tested; live
-  indexing from real repo sources is planned.
-- **Full session and scrollback restore across restart** — the
-  detach/reattach substrate exists today; full live restore is planned.
-
-**Coordination and ownership (planned)**
-
-- **Richer agent messaging and steering** — deeper steering controls layered
-  on top of the existing typed intent bus.
-- **Claim persistence and a conflict / parallel-safe badge in the UI** —
-  planned durability for ownership claims plus a visible parallel-safety
-  indicator.
-- **Ownership auto-refresh via a file watcher** — planned automatic refresh of
-  ownership state as files change.
-
-**Native visuals (planned)**
-
-- **Native text shaping (ligatures) and a real window transparency slider** —
-  planned visual-quality work.
-
-These are the planned next layers toward the foundational layer described
-below — each one gated behind a verifier before it becomes a claim.
-
-## Where this is going (the goal)
-
-This is a **goal**, framed as a goal, not a current claim.
-
-Aelyris aims to become a **foundational layer** that sits *above* the classic,
-hand-configured world of terminal multiplexing and ad-hoc agent
-orchestration — so running many AI agents in parallel, at high speed, with
-built-in safety/review, becomes the default rather than something you assemble
-yourself. The bet underneath it: agent coordination shouldn't be a layer of
-scripts scraping a tool built for one person at a keyboard — it should be the
-substrate itself. The vision is a calm, inspectable cockpit where one agent
-implements, another tests, another reviews, and the human keeps the final
-judgment — with the plumbing (persistent multiplexed terminals, governance,
-audit, worktrees, merge gates) bundled underneath so neither an engineer nor a
-non-engineer has to think about it.
-
-We keep that ambition honest the same way we keep everything else honest: by
-gating each claim behind a verifier you can run, and by clearly separating
-what ships today from what is still ahead.
-
-## Honest limits (today)
-
-These are deliberate publication-readiness boundaries, not hidden footnotes:
-
-- Aelyris **orchestrates existing coding-agent CLIs**; it doesn't replace your
-  IDE or the agents themselves.
-- Conflict avoidance applies to **orchestrated lanes** — arbitrary manual git
-  outside Aelyris's flow can still bypass it.
-- Editor intelligence is partial (completion and hover; go-to-definition,
-  diagnostics, and references are not in yet).
-- No stable public release yet; the package stays `"private": true` with no
-  npm publication intended.
-- Full session durability, live shared-brain population, and native-quality
-  terminal claims remain blocked behind their gates (live restore /
-  restart / replay proof, native visual regression, real-machine
-  sleep/resume evidence).
-- Some live verification needs WebView2/CDP access, real Windows
-  sleep/resume, and host process policies not available in every development
-  sandbox.
-- Authenticated AI-CLI prompt smoke tests can spend tokens. The operator-only
-  `pnpm verify:goal:operator:token-smoke` command requires an explicit provider
-  and mints a short-lived, one-use execution packet before the raw verifier can
-  reach CDP or send a prompt.
-- Release signing / updater artifacts are operator-owned and not produced by
-  default.
-- Windows-first.
+1. Close remaining operator/external release certification.
+2. Keep visible PTY as Current Best unless a structured runtime proves a material advantage; `promote_none` is a valid outcome.
+3. Build deterministic Mission replay/recovery from existing durable owners — no second journal, TaskGraph, or packet store.
+4. Expand verified Proofbooks, remote continuity, and governed multi-client operation only through separately approved boundaries.
+5. Move the product UI toward full-native Rust after Alyce is ready and the measured migration gate opens.
 
 ## Tech stack
 
-- Tauri v2 — Rust backend, WebView2 frontend
-- Rust: Tokio, portable-pty, git2, rusqlite
-- Native, Rust-backed terminal rendering (ConPTY; Rust-owned input, clipboard,
-  and IME — no xterm.js)
-- React 19, TypeScript, Vite 7
-- Monaco editor with Vim mode
-- Radix UI primitives, Lucide icons, CSS Modules
-- Mica/Acrylic window styling on Windows 11
+- **Tauri v2** — Rust backend with a React/WebView2 Cockpit
+- **Rust** — Tokio, Git2, rusqlite, native Windows APIs, ConPTY
+- **Frontend** — React 19, TypeScript, Vite 7, CSS Modules, Radix primitives
+- **Editor** — Monaco with Vim mode
+- **Control plane** — authenticated REST, MCP, and JSON-RPC projections over shared owners
+- **Packaging** — Windows EXE, NSIS, MSI, updater contract, release doctor
 
 ## Requirements
 
-- Windows 11 recommended (Windows 10 runs with reduced visuals)
-- Rust toolchain
-- Node.js 24+, pnpm 10+
-- WebView2 runtime
+- Windows 11 recommended
+- Rust MSVC toolchain
+- Node.js 24+
+- pnpm 10+
+- WebView2 Runtime
+- At least one compatible AI coding-agent CLI for live agent work
 
 ## Development
-
-For a new Windows development machine, clone the configured upstream and run the
-tracked bootstrap from the repository root:
 
 ```powershell
 git clone https://github.com/vellyalis/aelyris.git
 cd aelyris
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
+corepack pnpm tauri dev
 ```
 
-The bootstrap checks Node.js 24, pnpm 10, Rust/Cargo, performs
-`pnpm install --frozen-lockfile`, reconstructs the ignored local continuation handoff
-from tracked Git truth, and runs `pnpm verify:fresh-clone`. It does not copy secrets,
-signing material, or another machine's generated evidence. Start the app afterward
-with `pnpm tauri dev`.
-
-Before claiming that the current frontier can be resumed from any PC, run
-`pnpm verify:cross-pc-continuation`. The gate fails closed unless local `HEAD`, its
-tracking ref, and the remote advertised ref are identical.
-
-The first Rust/Tauri build can be slow, especially after cleaning Cargo
-`target` directories.
+The bootstrap checks the local toolchain, performs a frozen dependency install, reconstructs ignored continuation state from tracked Git truth, and runs the fresh-clone gate. It does not copy another machine’s credentials, tokens, signing material, or generated evidence.
 
 ## Build
 
 ```powershell
-pnpm build
-pnpm tauri:build:dist
+corepack pnpm build
+corepack pnpm tauri:build:dist
 ```
+
+The canonical Windows distribution wrapper builds the Rust PTY sidecar and produces local unsigned NSIS/MSI artifacts. Unsigned local artifacts are smoke evidence, not a release claim.
 
 ## Verification
 
-Aelyris keeps its claims honest by backing them with runnable verifiers.
-Useful non-token checks:
+Focused development lane:
 
 ```powershell
-pnpm verify:release:hygiene
-pnpm verify:requirements-spec-design-traceability
-pnpm verify:quality-score
-pnpm verify:goal:safe:no-token
+corepack pnpm verify:fast
+cargo check --manifest-path src-tauri/Cargo.toml --lib
+corepack pnpm verify:mcp-orchestrator
+corepack pnpm verify:ai-decision-knowledge
 ```
 
-Claim gates:
+Distribution and release evidence:
 
 ```powershell
-pnpm verify:mux-durability-contract
-pnpm verify:visible-agent-pane-binding
-pnpm verify:terminal:native-boundary
+corepack pnpm verify:dist
+corepack pnpm verify:release:doctor
+corepack pnpm verify:supply-chain
+corepack pnpm verify:stack-risk
+corepack pnpm verify:goal:safe:no-token
 ```
 
-The no-token chain writes `.codex-auto/quality/final-goal-safe-no-token.json`
-and records `tokenSpendingPromptExecutedByThisRun=false`; a historical artifact
-with `tokenSpendingPromptExecuted=true` does not mean the current no-token run
-spent tokens. Token-spending validation is a separate operator command:
+Cross-PC continuation:
 
 ```powershell
-$env:AELYRIS_AUTH_PROMPT_PROVIDER="codex"
-pnpm verify:goal:operator:token-smoke
+corepack pnpm bootstrap:continuation
+corepack pnpm verify:product-delivery:continuation
+corepack pnpm verify:cross-pc-continuation
 ```
+
+Do not infer current readiness from prose or an old score artifact. Regenerate the relevant gate on the exact current HEAD.
 
 ## Documentation
 
-- Documentation guide: `docs/README.md`
-- Introduction: `docs/GITHUB_INTRODUCTION.md`
-- Contributor workflow: `docs/AGENT_WORKFLOWS.md`
-- Publication readiness: `docs/PUBLICATION_READINESS.md`
-- Requirements & claim policy: `docs/requirements.md`
-- Spec index: `docs/specs/README.md`
-- Visible-agent runtime boundary: `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
+- [GitHub introduction and About copy](docs/GITHUB_INTRODUCTION.md)
+- [Documentation index](docs/README.md)
+- [Contributor workflow](docs/AGENT_WORKFLOWS.md)
+- [Publication readiness](docs/PUBLICATION_READINESS.md)
+- [Requirements and claim policy](docs/requirements.md)
+- [Specification index](docs/specs/README.md)
+- [MCP tool surface](docs/specs/MCP_TOOL_SURFACE_SPEC.md)
+- [Visible agent runtime](docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md)
 
-## Repository hygiene
+## Naming
 
-Generated local artifacts are intentionally ignored (`node_modules/`, `dist/`,
-`src-tauri/target/`, build output, signing material, local `.env` files). Do
-not commit secrets, tokens, or generated artifacts.
+- Product: **Aelyris**
+- Read as: **Aelys** / **エイリス**
+- CLI / short name: `aelys`
+- Coordination engine: **Qralis**
 
 ## Contributing
 
-Aelyris moves quickly. Before opening a change, read `AGENTS.md` and
-`CONTRIBUTING.md`, keep requirements / implementation / verifier artifacts
-aligned, and don't introduce a claim that its matching gate doesn't yet
-support.
-
-## Security
-
-Please don't open a public issue for a suspected vulnerability before it's
-been triaged — see `SECURITY.md`.
+Read `AGENTS.md` and `CONTRIBUTING.md` before changing the repository. Keep requirements, implementation, tests, verifiers, and public claims aligned. Do not add a second owner for Mission, TaskGraph, PTY, review, merge, packets, or durable state.
 
 ## License
 
-MIT. See `LICENSE`.
+See [LICENSE](LICENSE).

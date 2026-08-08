@@ -1,153 +1,130 @@
-# GitHub Introduction Draft
+# GitHub Introduction Copy
 
-This is a public-facing introduction draft for the project. It uses **Aelyris**
-as the product name. Aelyris is pronounced **Aelys** / **エイリス**. The CLI and
-short name is **aelys**. Product surfaces use **Aelyris Core**, **Aelyris Grid**,
-and **Aelyris Pane**. The coordination engine is **Qralis**.
+Aelyris is pronounced **Aelys** / **エイリス**. The CLI and short name is `aelys`. The coordination engine is **Qralis**.
 
-Use this text for the GitHub repository page, README opening section, social
-preview copy, or a launch post. Before publishing, confirm name availability and
-keep the current release status aligned with `docs/PUBLICATION_READINESS.md`.
+Use this file as the canonical source for the repository About text, launch copy, and short public introductions. Keep every claim aligned with `README.md`, `README.ja.md`, `docs/requirements.md`, and the current verifier evidence.
 
-## Short GitHub Description
+## Repository description
 
-Aelyris is mission control for a fleet of AI coding agents on your own
-machine: every agent in a visible terminal pane, on its own git worktree,
-coordinated down to the function level, merged only through commit-bound,
-auditable gates.
-
-## Tagline Options
-
-- Mission control for a fleet of AI coding agents — on your own machine.
-- A calm cockpit for parallel, supervised AI development.
-- Visible panes, isolated worktrees, function-level coordination, gated merges.
-
-## Why The Name Aelyris
-
-**Aelyris** is a coined name, pronounced **Aelys** / **エイリス**.
-
-The name is meant to feel light, celestial, and technical without sounding like
-only a terminal. It carries traces of airy, astral, iris, and Elysian imagery:
-space, light, sight, and a clear operating surface. That fits the product's
-long-term direction: a workspace where AI agents, panes, tasks, reviews, and
-proof are visible instead of hidden behind disconnected chats.
-
-**Qralis** names the coordination engine: the layer that keeps agents, roles,
-messages, panes, reviews, and evidence connected. Aelyris is the workspace;
-Qralis is the coordination logic inside it.
-
-## Main Introduction
-
-Aelyris is a Windows-first, local-first workspace for running many AI coding
-agents in parallel on one real project — without them stepping on each other,
-and without hiding their work behind invisible background jobs.
-
-Every agent runs as a real, interactive AI CLI in its own visible terminal
-pane, on its own git worktree. Ownership is tracked per symbol, down to the
-function: agents owning disjoint functions run in parallel, overlapping work
-serializes automatically. Nothing reaches the main branch unsupervised —
-approval binds to the exact commit it was granted against, and mechanical
-build/test/lint gates can block a merge even after a human approves. The
-terminal, the multiplexer, and the agent control plane underneath are written
-from scratch in Rust for exactly this job, and everything the cockpit UI can
-do is also exposed as a typed MCP control plane with a full audit trail.
-
-The long-term goal is a calm, inspectable cockpit for multi-agent development.
-One agent implements, another tests, another reviews, while the human operator
-keeps the final judgment. Aelyris is not here to replace that judgment. It is
-here to make parallel AI work easier to guide, easier to trust, and easier to
-clean up before it ships.
-
-The project is alpha and in active development. One discipline shapes the
-public story: a capability is not claimed until a verifier you can run
-yourself proves it. Release-level claims stay gated behind verifier output as
-the product matures.
-
-## Japanese Introduction
-
-Aelyris（エイリス）は、複数の AI コーディングエージェントを自分のマシンの上で
-並列に働かせるための管制室です。Windows ファースト・ローカルファーストで、
-ひとつの本物のプロジェクトを相手に、エージェント同士を衝突させず、しかも
-その仕事ぶりを隠さず見せることを目的にしています。
-
-エージェントは一体ずつ、目に見えるターミナルペインの中で本物の対話型 AI CLI
-として動き、それぞれ専用の git worktree を持ちます。所有権は関数単位で追跡
-され、別々の関数を持つエージェントは並列に、重なった作業は自動で直列に
-捌かれます。main ブランチには無監督では何も入りません——承認はその時点の
-コミットに紐づき、ビルド・テスト・リントの機械ゲートは人間が承認した後でも
-マージを止められます。土台のターミナルとマルチプレクサ、エージェント制御
-プレーンは、この用途のために Rust でゼロから書いたものです。
-
-Aelyris という名前は、air、astral、iris、Elysian のような響きを少しずつ
-残した造語です。軽さ、天体感、光、視界、そして澄んだ操作面を感じられる
-名前として選びました。**Qralis** は協調エンジンの名前です。実装する AI、
-テストする AI、レビューする AI が役割を分担し、最後の判断は人間が持つ——
-Qralis はその役割・メッセージ・ペイン・レビュー・証跡をつなぐ層で、
-Aelyris がワークスペース、Qralis がその中の協調ロジックにあたります。
-
-プロジェクトはアルファ版で、開発は現在進行形です。方針はひとつだけ徹底して
-います——自分の手で実行できる verifier が証明するまで、その機能は「ある」と
-言わない。リリース品質のような大きな主張は、検証コマンドと証跡が揃うまで
-主張しません。
-
-## README Opening Variant
-
-```markdown
-# Aelyris
-
-Mission control for a fleet of AI coding agents — on your own machine.
-Aelyris runs many coding agents in parallel: each one lives in its own visible
-terminal pane, works on its own git worktree, is coordinated down to the
-function level, and reaches your main branch only through commit-bound,
-auditable merge gates.
-
-It is built for a workflow where one agent implements, one tests, one reviews,
-and the human operator keeps the final call — with the plumbing (persistent
-multiplexed terminals, governance, audit, worktrees, merge gates) bundled
-underneath so parallel AI work stays inspectable instead of becoming scattered
-background activity.
-
-The project is alpha and in active development. A capability is not claimed
-until a verifier you can run yourself proves it; public release claims remain
-gated by verifier output rather than marketing copy.
+```text
+Local-first mission control for AI coding agents: visible PTY work, isolated Git worktrees, backend-owned review, exact-OID merge, and immutable completion receipts.
 ```
 
-## GitHub About Fields
+## One-line pitch
+
+**Aelyris turns a development Goal into a durable, visible, reviewable Mission — from AI planning and isolated worktrees to exact-OID merge and restart-safe completion evidence.**
+
+## Short introduction
+
+Aelyris is a Windows-first, local-first Mission OS for AI coding agents. Each worker runs as a real interactive CLI in a visible terminal pane and an isolated Git worktree. Planning, TaskGraph state, review, merge authority, immutable completion packets, and restart recovery remain backend-owned.
+
+The verified path is:
+
+```text
+Goal → Mission/TaskGraph → visible PTY implementation → fresh gates
+     → independent review → exact-OID merge → immutable receipt → restart recovery
+```
+
+The human Cockpit and typed MCP/JSON-RPC control plane use the same Rust owners. An AI may request the next operation, but it cannot invent its reviewer verdict, candidate OID, merge token, or completion packet.
+
+Aelyris is alpha and not release-ready. Signing, updater publication, installer lifecycle, real sleep/resume, and selected external certification remain explicit gates.
+
+## Longer introduction
+
+AI made generating code cheap. The difficult part is now coordinating several agents on one real repository without hiding their work, losing ownership, trusting stale test output, or merging the wrong commit.
+
+Aelyris treats that coordination layer as the product:
+
+- one visible terminal pane per agent;
+- one isolated Git worktree per orchestrated worker;
+- file and symbol ownership with conflict detection;
+- durable Mission and TaskGraph state in SQLite;
+- fresh mechanical gates and fixed independent review;
+- exact candidate binding and old-OID compare-and-swap merge;
+- immutable `CompletedWorkPacket` and `MissionCompletionPacket` evidence;
+- restart-safe current Mission, bounded history, and completion receipt;
+- one Governance and audit boundary shared by the Cockpit and MCP control plane.
+
+The terminal, multiplexer, agent runtime, Mission authority, and evidence path are built for supervised multi-agent development rather than bolted onto invisible background jobs.
+
+Aelyris is provider-neutral. Visible PTY is the current best execution path. OpenCode or another structured runtime is not a dependency and is adopted only if it proves a material advantage without duplicating Aelyris-owned Mission, session, permission, evidence, review, or merge state.
+
+## 日本語の短い紹介
+
+**Aelyris（エイリス）は、AI コーディングエージェントの作業を見える Mission として管理する、Windows ファースト・ローカルファーストの開発管制室です。**
+
+自然言語の Goal から Mission／TaskGraph を作り、各 agent を専用 git worktree と visible PTY で動かし、fresh gate、独立 review、exact-OID merge、不変 completion receipt、再起動後の復元までを 1 本の backend-owned 経路として扱います。
+
+Cockpit UI と MCP／JSON-RPC control plane は同じ Rust owner を使います。AI は操作を要求できますが、review verdict、candidate OID、merge token、completion packet を自分で作ることはできません。
+
+Aelyris は現在アルファ版で、release-ready ではありません。正式署名、updater 公開、installer lifecycle、real sleep/resume、外部 certification は別 gate のままです。
+
+## Tagline options
+
+- Verifiable mission control for AI coding agents.
+- Visible agent work. Exact-commit review. Durable completion truth.
+- From Goal to exact-OID merge, without hiding the agents.
+- A local Mission OS for supervised multi-agent development.
+
+Japanese:
+
+- AI コーディングエージェントのための、検証可能な Mission 管制室。
+- 作業は見える。レビューは exact commit。完了は packet で証明する。
+- Goal から exact-OID merge まで、AI の仕事を隠さない。
+
+## GitHub About fields
 
 Description:
 
 ```text
-Mission control for a fleet of AI coding agents: visible panes, isolated git worktrees, function-level coordination, commit-bound merge gates. Windows-first, local-first.
+Local-first mission control for AI coding agents: visible PTY work, isolated Git worktrees, backend-owned review, exact-OID merge, and immutable completion receipts.
 ```
 
 Website:
 
 ```text
-Leave blank until a stable project page exists.
+Leave blank until a stable public project page exists.
 ```
 
 Topics:
 
 ```text
-tauri, rust, react, typescript, terminal, ai-agents, multi-agent, developer-tools, windows, worktree, mcp
+rust, tauri, ai-agents, agent-orchestration, multi-agent, terminal, developer-tools, git-worktree, mcp, windows, local-first
 ```
 
-## Claim Boundaries
+## Social post copy
+
+```text
+Aelyris turns a dev Goal into a durable Mission: visible AI terminals, isolated worktrees, fresh gates, independent review, exact-OID merge, immutable completion receipts, and restart recovery. Local-first, Windows-first, alpha.
+```
+
+Japanese:
+
+```text
+Aelyrisは、開発Goalを耐久的なMissionへ変える。見えるAI端末、隔離worktree、fresh gate、独立review、exact-OID merge、不変receipt、再起動復元までをローカルで一つに。現在alpha。
+```
+
+## Claim boundaries
 
 Good public wording:
 
-- AI development workspace
-- multi-agent development cockpit
-- visible AI-agent lanes
-- project-first terminal workspace
-- review and verification oriented
-- alpha / active development
+- alpha / active development;
+- local-first Mission OS for AI coding agents;
+- visible agent terminals;
+- isolated Git worktrees;
+- backend-owned review and exact-OID merge;
+- immutable packet-backed completion;
+- restart-safe current Mission, bounded history, and receipt readback;
+- Cockpit and MCP over shared owners.
 
-Avoid until the matching gates are green:
+Do not use until the matching release gates are closed:
 
-- release-ready / production-ready
-- fully autonomous swarm intelligence
-- completed autonomous multi-agent platform
+- release-ready / production-ready;
+- fully autonomous;
+- safe-to-ship without operator judgment;
+- full provider parity;
+- full-native / WebView-free product;
+- remote multi-client control;
+- completed Mission Time Machine.
 
-Aelyris is alpha and does not claim production readiness; capability claims are
-gated by verifiers.
+Focused proof is not aggregate release readiness. Regenerate current evidence on the exact current HEAD before changing public claims.

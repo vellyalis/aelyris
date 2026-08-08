@@ -2,384 +2,221 @@
 
 # Aelyris
 
-![Aelyris の可視分割ペインの中で複数の AI コーディングエージェントが並列に作業している様子。シェルと並んで 4 つの対話型エージェント CLI がそれぞれ別タスクで協調し、左側にプロジェクトのファイルツリー、右側にオーケストレーターレールがある](docs/assets/hero-fleet.png)
+![プロジェクトツリーと Mission コックピットの横で、複数の AI コーディングエージェントが見えるターミナルペイン内で作業している Aelyris](docs/assets/hero-fleet.png)
 
-**複数の AI コーディングエージェントを、自分のマシンの上で指揮するための管制室。**
-Aelyris では、たくさんのコーディングエージェントが同時に働きます。それぞれが
-**目に見えるターミナルペイン** を持ち、**専用の git worktree** で作業し、
-**関数単位** で衝突を捌かれ、**コミットに紐づく監査可能なマージゲート** を
-通過してはじめて main ブランチに入ります。土台のターミナル・マルチプレクサ・
-エージェント制御プレーンは既存ツールのラッパーではなく、この用途のために
-Rust でゼロから書き起こしたものです。
+**AI コーディングエージェントのための、検証可能なローカル管制室。作業は見え、権限はバックエンドにあり、マージは exact-OID で行われます。**
 
-> **アルファ版・開発進行中。まだ安定リリースできる状態ではありません。** この
-> プロジェクト全体を貫く規律がひとつあります——**自分の手で実行できる verifier が
-> 証明するまで、その機能は「ある」と言わない。** この README が *出荷済み* と
-> *計画中* をわざわざ分けているのはそのためで、大きな製品主張（ライブ耐久性、
-> 再起動 / リプレイ、ネイティブ視覚品質、署名 / アップデータ、外部オペレーター
-> 検証）は、対応するゲートが緑になるまで主張しません。
+Aelyris（エイリス）は、自然言語の開発目標を耐久的な **Mission** に変換します。計画、TaskGraph、見える PTY 実行、独立レビュー、正確なコミットのマージ、不変の完了 packet、再起動後の復元は、すべてバックエンドの既存 owner が担当します。オペレーターは実際のエージェント端末を見ながら必要に応じて介入し、終了後には耐久的な証跡を確認できます。
 
-## ひと目でわかる Aelyris
+> **アルファ版・開発中。まだリリース可能とは主張しません。**
+> focused test が 1 本通っただけで製品機能やリリース品質へ昇格させることはありません。公開主張は、実行可能な verifier、正確な Git provenance、オペレーター／外部ゲートの後ろに置きます。
 
-| 柱 | 得られるもの | 状態 |
-| --- | --- | --- |
-| **1 ペイン = 1 エージェント** | 各エージェントは見えるターミナルペインの中の本物の対話型 AI CLI——流れる画面を見て、走行中に方向修正し、実セッションからデバッグできる | 出荷済み |
-| **フリート前提で作り直したマルチプレクサ** | ペイン・分割・本物のレイアウトエンジン・アプリより長生きできるセッション——多数の長時間・監督付きエージェントのために Rust でゼロから実装 | 出荷済み |
-| **関数単位の衝突回避** | 所有権をシンボル単位で追跡: 互いに素な関数を持つエージェントは並列に走り、重なる作業は自動的に直列化される | 出荷済み（parser ベース。LSP ティアは計画中） |
-| **コミット束縛のレビュー & マージ** | 承認は付与時点のコミットに束縛（旧 OID の compare-and-swap）。機械的な build/test/lint ゲートは人間の承認後でもマージをブロックできる | 出荷済み |
-| **1 つの能力サーフェス、2 つの顔** | コックピット UI と 60 以上の型付き MCP verb 制御プレーンが同じコアを駆動——drift テスト済み・ガバナンス付き・監査証跡付き | 出荷済み |
+## 検証済みの Mission 経路
 
-各行は、実行できるチェックに裏づけられたアーキテクチャ上の性質を指しています——
-[検証](#検証) を参照。
+```text
+自然言語の Goal
+        ↓
+バックエンド所有の planner
+        ↓
+耐久的な Mission + TaskGraph
+        ↓
+隔離された git worktree 内の visible AI CLI
+        ↓
+fresh なプロジェクト gate
+        ↓
+固定された独立 reviewer
+        ↓
+exact-OID merge
+        ↓
+CompletedWorkPacket + MissionCompletionPacket
+        ↓
+再起動後も復元できる現在状態・履歴・完了 receipt
+```
 
-現在の機械的真実（2026-07-06 JST 再生成）: `pnpm verify:quality-score` は
-`60/100`（`212/351`）、グレード `D`、`releaseCandidateReady=false`。final-goal
-監査は `blocked`（`implementationFixableCount=20`、`policyBlockedCount=3`、
-`externalBlockedCount=18`）。証拠アーティファクトの鮮度はソース更新のたびに
-失効するので、この数値は散文を信じず必ずコマンドで再生成して読んでください。
-Aelyris はアルファのままで、リリース可能ではありません。
+この経路は、real Codex worker、visible PTY 実装、独立レビュー、exact-OID merge、不変 settlement、worktree 回収、同一 SQLite での再起動復元まで実機で通しています。Cockpit と MCP は同じバックエンド owner の projection であり、どちらも verdict、candidate OID、packet、完了状態を勝手に作れません。
 
-## なぜ今か
+## ひと目でわかる現在の機能
 
-AI のおかげで「コードを書く」こと自体は簡単になりました。ボトルネックは別の場所に
-移っています。もはや難しいのは *コードを書くこと* ではなく、**多数のコーディング
-エージェントを同時に動かしつつ互いに踏み合わないよう調整し、その成果を出荷できる
-だけ信頼すること** です。
+| 領域 | アルファ版で使えるもの |
+| --- | --- |
+| **見えるエージェント作業** | 1 ペインに 1 つの本物の対話型 AI CLI。実行中の画面を見て、必要なら方向修正できます |
+| **隔離** | オーケストレーションされた worker は専用 git worktree と宣言済み output／ownership lane を使います |
+| **耐久的 Mission** | Goal、plan、TaskGraph、実行状態、review lineage、settlement packet、現在 Mission を SQLite から復元 |
+| **レビュー／マージ権限** | 固定独立レビュー、機械 gate、exact candidate binding、旧 OID compare-and-swap merge |
+| **完了の真実** | Task は不変の `CompletedWorkPacket` がなければ完了ではなく、Mission 全体には `MissionCompletionPacket` が必要 |
+| **Mission 履歴** | bounded な newest-first 履歴で、現在の未完了 Mission と過去の packet-backed 完了を明確に分離 |
+| **2 つの製品面** | 人間向け Cockpit と型付き MCP／JSON-RPC control plane が、同じ Rust owner と Governance 境界を使用 |
+| **ネイティブ端末基盤** | Rust 所有の ConPTY、入力、clipboard、IME、scrollback、pane graph、session lifecycle |
+| **Windows 配布** | ローカル unsigned EXE／NSIS／MSI の smoke artifact。正式署名と公開は別 gate |
 
-1 つのリポジトリに複数エージェントを素朴に向けると、混乱が待っています。同じ
-ファイルが二重に編集され、作業が黙って上書きされ、誰が何を変えたのか記録が残り
-ません。よくある答えは問題そのものより悪い——1 体ずつ動かすか、エージェントを
-*見えない* 裏側のジョブとして展開するか。後者は、非エンジニアには監督できず、
-エンジニアにはデバッグできない、ちょうど最悪の形です。
+## Aelyris が必要な理由
 
-Aelyris は別の立場を取ります: 並列 AI 開発は、**構造からして見える・調整される・
-レビューできる** べきだ、と。盲目的に信頼する作業ではなく、見て確認できる作業に
-する——そして土台は同梱されているので、エンジニアは手配線せずに済み、非エンジニア
-はその存在すら学ばずに済みます。
+複数の coding agent を起動すること自体は難しくありません。難しいのは、各 agent の作業を見える状態に保ち、変更を隔離し、何をテストしたか証明し、レビュー済みの正確なコミットだけを main へ入れることです。
 
-## 命名
+Aelyris は、その問題を後付けスクリプトではなく製品の基本要素として扱います。
 
-- 製品名: **Aelyris**、読みは **Aelys** / **エイリス**。
-- CLI / short name: `aelys`。
-- 機能名: **Aelyris Core**、**Aelyris Grid**、**Aelyris Pane**。
-- 協調エンジン名: **Qralis**。
+- **隠さず見せる** — 実際の agent session が操作面であり、そのままデバッグ記録になります。
+- **chat 中心ではなく project 中心** — Mission は repository、TaskGraph、branch、output、evidence、Git identity に結びつきます。
+- **権限はバックエンドが所有** — AI は計画・実行・レビュー開始を要求できますが、自分の verdict、merge token、completion packet は書けません。
+- **ラベルではなく exact evidence** — `done` と表示されるだけでは完了になりません。統合された exact OID に結びつく検証済み packet lineage が必要です。
+- **provider-neutral** — visible PTY が現在の Current Best です。OpenCode や別の structured runtime は必須ではなく、Aelyris の owner を重複させずに明確な優位性を証明した場合だけ候補になります。
+- **ローカルファースト** — terminal、worktree、SQLite、audit、control surface はオペレーターの PC 上で動きます。
 
-## いま実際にできること
+## 現在できること
 
-ここに挙げるのは、すでに動いている実装です。Aelyris が公に置く強い事実主張は 1 つ
-だけ——**実体のある Rust/Tauri ターミナル、mux、sidecar、可視エージェント、MCP、
-worktree、ownership、レビュー、マージの土台がある** ということ。以下の各節はその
-土台の一部で、実行できる verifier で裏づけられています。
+### Visible terminal fleet
 
-### 1 ペイン = 1 エージェント（隠さず、見せる）
+- 互換 coding-agent CLI を見える terminal pane 内で実行。Codex には current real-provider Mission evidence があり、provider ごとの parity は別 gate のままです。
+- pane はブラウザ端末テキストのスクレイプではなく、Rust 所有の native session state に接続。
+- multiplexer が workspace／window／tab／pane topology、split、zoom、同期入力、bounded capture、scrollback、restart adoption を所有。
+- agent／terminal lifecycle の read projection は value-minimized。raw scrollback は明示的に sensitive な terminal capture 境界からだけ取得。
 
-各エージェントは、**見えるターミナルペインの中で本物の対話的 AI CLI として** 動き
-ます。中身の見えない裏側の「サブエージェント」ではありません。これがこの製品の
-核になる設計判断で、効き目は 4 つあります。
+### Durable Mission OS
 
-- **可観測性** — エージェントが見ているのとまったく同じセッションが、目の前を流れ
-  ます。
-- **ステアリング** — *走行中の* エージェントを途中で方向修正できます（例: 特定の
-  ファイルから遠ざける）。ブラックボックスが終わるのを待つ必要はありません。
-- **信頼** — 隠れた群れが「大丈夫」と主張する出力ではなく、自分が実際に見た作業を
-  出荷できます。
-- **デバッグ容易性** — 何かおかしくなったとき、その実ターミナルセッション *そのもの*
-  がログになります。
+- 自然言語 Goal を backend-owned planner へ渡して計画。
+- Mission + TaskGraph を atomic に受理。
+- 既存 PaneFleet／worktree owner から visible worker を dispatch。
+- fresh gate と独立 review。
+- exact candidate freeze、MergeIntent、exact-OID merge、不変 settlement、durable completion event、cleanup。
+- restart-safe な `mission.current`、bounded `mission.history`、packet-backed `mission.completion`。
+- Cockpit 内の Mission history。現在／未完了／完了／不整合を分け、read-only receipt inspector から不変参照だけを確認可能。
 
-名前付きブランチを指定してエージェントを起動すると、そのエージェントは **専用の
-git worktree** を持つので、並列エージェントどうしが作業ツリーを共有することは
-ありません。
+### Coordination と Governance
 
-### フリート前提で作り直したネイティブマルチプレクサ
+- file／symbol ownership、衝突検出、lease。
+- 共有 decision、typed intent、durable event、blocker、activity、knowledge-graph impact query。
+- Principal-scoped discovery／authorization。
+- mutation と coordination read の payload-minimized audit。
+- cost cap と、信頼できる telemetry がない cap 軸を 0 と見なさず fail-closed にする admission。
 
-ターミナル層は **既存のマルチプレクサのラッパーではありません**。ペイン、分割、
-永続セッション、レイアウトモデルを Rust でゼロから書き起こし、1 人がキーボードに
-向かう状況ではなく、多数の長時間・監督付きエージェントを最初から前提に設計して
-います。
+### AI 自己操作
 
-- **本物のレイアウトエンジン** — workspace → window → tab → pane のグラフを二分
-  分割ツリーの上に持ち、分割 / クローズ / 入れ替え / 移動 / 回転 / ズーム / 均等
-  タイル化 / 比率の均等化、ペイン間の入力同期、さらにペインを独立タブへ切り出し /
-  取り込みまで備えます。
-- **プレフィックスキーのバインディングエンジン** — 「プレフィックス和音を 1 つ、
-  続けてコマンドキーを 1 つ」という馴染みのモデルを、ペイン / ウィンドウのコマンド
-  へと解決します。再割り当て可能・衝突検査付きのバインディングで、実行は UI 側で
-  配線されます。
-- **アプリより長生きできるセッション** — 長時間のターミナルは、アプリの
-  kill-on-close ジョブの外に意図的に置かれた **アウトオブプロセスのデーモン** が
-  ホストでき、アプリの再起動（やクラッシュ）を越えて生き残り、次回起動時に再採用
-  されます。インプロセス経路は、アトミックなワークスペース単位スナップショットから
-  **ペインレイアウト全体** を再構築し、**ファイルバックドのスクロールバック** を
-  埋め戻すので、復元されたペインは空ではなく履歴付きで戻ります。
-- **ネイティブで孤児を出さないプロセス所有** — 各ペインは本物のネイティブセッション
-  （Windows では ConPTY）で、入力 / クリップボード / IME を Rust が所有し、生成した
-  子はすべて kill-on-close ジョブに入るので、エージェント CLI が孤児として残ること
-  はありません。
+サポートされた Mission 経路は型付き MCP tool から利用できます。
 
-これが、見えるペインが住まう土台です——永続セッション・構造化されたレイアウト状態・
-孤児プロセスを出さない、という設計判断は、持続的で観測される並列作業を前提にして
-初めて意味を持ちます。
+```text
+aelyris.mission.plan
+aelyris.mission.current
+aelyris.mission.run_next
+aelyris.mission.review_and_settle
+aelyris.mission.completion
+aelyris.mission.history
+```
 
-### 関数単位の衝突回避（共有ブレイン）
+caller が渡せるのは各段階に必要な bounded identity／Goal だけです。planner 選択、TaskGraph 権限、reviewer identity、verdict、candidate OID、merge 権限、packet 生成はバックエンドに残ります。
 
-多数のエージェントが **同じコードベースを並列に、踏み合わずに** 触れます。ownership
-をファイル単位だけでなく、**シンボル単位（関数の粒度まで）** で追跡しているからです。
+## 正直な制約
 
-- クレームは行レンジ（inclusive）と、**lease**（クラッシュしたエージェントの
-  クレームは自動で解放される）と、**信頼度ティア** を持ちます: parser ベースの
-  正確なレンジは重なれば hard-block、推論ベースの diff-hunk レンジは warn のみ。
-- オーケストレーションされたレーンは衝突を理解します——**互いに素なシンボルは並列
-  実行され、重なる作業は自動的に直列化されます。** 別々の関数を持つ 2 エージェント
-  なら、*同じファイル* を編集しても構いません。
-- コード知識グラフのコアが「このモジュールが変わったら影響範囲はどこか？」（推移的な
-  依存モジュール集合）に答えるので、調整はファイル名ではなく構造に基づいて行われ
-  ます。
+Aelyris はまだアルファ版です。
 
-*今日:* 正確なレンジは tree-sitter parser ベースで、影響分析はモジュール単位です。
-*計画中:* LSP ベースの正確なティアと、シンボル単位の blast-radius。
+- 正式な **Authenticode**、updater 署名、`.sig`／`latest.json`、公開、update endpoint の証拠は未完了。
+- installer の実 install／relaunch／upgrade／rollback はオペレーター gate。
+- real Windows sleep／resume と一部の外部 A9 certification は別証拠。
+- 現在の UI は、native Rust terminal／runtime substrate の上に Tauri／React／WebView2 Cockpit を載せています。Full Native UI は、再利用可能な **Alyce** framework と activation evidence が整うまで parked。
+- 衝突回避が保護するのは Aelyris 所有の orchestration lane。外部からの任意 Git 操作は回避できます。
+- Aelyris は既存の coding-agent CLI を協調させる製品であり、model やオペレーターの最終判断を置き換えません。
+- 現在の主対象は Windows です。
 
-### 監査可能なレビューとコミット束縛マージ
+## ロードマップの方向
 
-何ものも、無監督で main ブランチに到達しません。
+優先順位は value-first です。
 
-- worktree の diff レビューに加え、**機械的なプリマージゲート**——客観的な
-  build / test / lint コマンドがタスクの worktree で走り、*人間が承認した後でも*
-  マージをブロックできます。
-- 承認は **付与された時点のコミットそのものに束縛されます。** git 更新は旧 OID の
-  compare-and-swap を使うので、足元で動いたブランチ先端は拒否され、黙ってマージされ
-  ることはありません。
-
-### 1 つの能力サーフェス、2 つの顔
-
-Aelyris ができることはすべて **1 つのバックエンド能力レイヤー** にあり、その上に
-2 つの顔が乗ります——人間が操作する **コックピット UI** と、オーケストレーション
-する AI（あるいは素のスクリプト）が叩く **JSON-RPC（MCP）コントロールプレーン**。
-どちらも同じコアと話すので、手で行えることとエージェントが呼び出しで行えることが
-食い違わず、しかも端末テキストのスクレイプではなく構造化された状態を相手にします。
-
-コントロールプレーンは **60 以上の型付き verb** で、いずれも実在するバックエンド
-モジュールに配線されています——カタログと JSON スキーマが *同一の* 集合を列挙する
-ことを drift テストが保証し、ハンドラを持たない verb はディスパッチ時に弾かれるので、
-実装のない見せかけの verb はありません。サーフェスは次をカバーします。
-
-- **ターミナル / 多重化** — セッション一覧、スクロールバックの範囲取得、
-  ワークスペースグラフの読み取り、生きたペインへのガード付き入力。
-- **worktree / フリート** — git worktree の検証 / 作成 / 削除、エージェントの
-  ルーティング / 起動 / 停止 / ステアリング、生きたフリート状態の読み取り。
-- **協調** — ファイル単位および **シンボル単位** の所有権（claim / refresh /
-  release と衝突）、**知識グラフの blast-radius** 問い合わせ、共有のプロジェクト
-  決定（ADR）ストア、型付き **intent bus**、再起動を越える no-loss な **イベント
-  ストリーム**。
-- **レビュー / マージ** — 承認の要求、保留中の決定の一覧、そして承認呼び出しが
-  *intent id だけ* を取る **耐久的でコミット束縛のマージ intent**——別のリポジトリ
-  やブランチに付け替えることが構造上できません。
-- **共有ブレインのスナップショット** — 1 回の呼び出しで全体像（生きたエージェント、
-  活動、所有権、未解決のマージ、ブロッカー、プロジェクト決定）を返します。
-
-すべての verb は単一の **ガバナンス認可** チョークポイントを通り（今はローカルの
-単一オペレーター allow-all のシームで、エンタープライズ版はハンドラに触れずに RBAC
-へ差し替え可能）、特権アクションは shell / file コマンド——エージェント CLI が受け取る
-入力を含む——まわりで **リスク分類** され、ストリーム全体が **event / audit の証跡**
-に残ります。
-
-これらの周りにワークスペースの残りが配置されます——Monaco エディタ（Vim モード）、
-ファイルツリー、検索、Git / worktree ツール、PR インスペクタ。
-
-これは **ローカルファースト** です。ホスト型ダッシュボードではなく、あなたのマシン
-で動きます。
-
-### 誰のためか
-
-- **エンジニア** は、worktree・ロック・ゲート・監査を手配線せずに、速くて安全な並列
-  エージェント開発を得られます。低レイヤーの基盤は同梱です。
-- **非エンジニア**（「vibe coding」の波）は、同じ基盤を **ガードレール** として
-  得られます。レビュー / マージゲート、監査の証跡、関数単位の衝突回避が、自分では
-  *セルフレビューできない* 人にとって、作業を見えて確認しやすくする安全網になります
-  ——安全網であって、安全に出荷できる保証ではありません。
-
-## 今後の計画
-
-以下は **計画中の作業のロードマップ** であり、出荷済みの機能ではありません。ほかの
-すべてと同じ verifier の規律で追跡しており、完了と意図の境界を明確に保つため、各項目
-には意図的に *計画中* とラベルを付けています。
-
-**シンボル理解の強化（計画中）**
-
-- **LSP に基づく正確なシンボル抽出**——抽出は現在 parser / tree-sitter ベースです。
-  計画中の LSP `documentSymbol` ティアにより、正確なシンボル境界が得られます。
-- **シンボル単位の知識グラフ blast-radius**——影響分析は現在モジュール単位です。
-  シンボル単位の blast-radius は計画中です。
-- **LSP の go-to-definition、diagnostics、find-references**——エディタ支援は
-  現在は部分的（completion と hover のみ）。これらは計画中です。
-
-**共有ブレインとセッション状態（計画中）**
-
-- **実リポジトリソースからのライブな共有ブレイン投入**——知識グラフと影響分析の
-  コアは実装・ユニットテスト済みです。実リポジトリソースからのライブなインデックス
-  化は計画中です。
-- **再起動をまたぐ完全なセッション / スクロールバック復元**——detach/reattach 土台は
-  実装済みです。ライブな完全復元は計画中です。
-
-**調整と所有権（計画中）**
-
-- **より豊かなエージェントメッセージングとステアリング**——既存の型付き intent bus
-  の上に重ねる、より深いステアリング操作。
-- **クレームの永続化と、UI 上の衝突 / 並列安全バッジ**——所有権クレームの永続化と、
-  並列安全を示す可視インジケーターを計画中です。
-- **ファイルウォッチャーによる所有権の自動リフレッシュ**——ファイル変更に応じて所有権
-  状態を自動的にリフレッシュすることを計画中です。
-
-**ネイティブ視覚品質（計画中）**
-
-- **ネイティブのテキストシェイピング（リガチャ）と、本物のウィンドウ透過
-  スライダー**——計画中の視覚品質作業。
-
-これらは、下で述べる基盤レイヤーへ向けた計画中の次の層です——いずれも主張になる前に
-verifier の後ろにゲートされます。
-
-## この先の目標
-
-これは **目標** であり、目標として書いています。現在の主張ではありません。
-
-Aelyris は、ターミナル多重化やその場しのぎのエージェント調整を手で設定する従来の
-世界の *上に* 立つ **基盤レイヤー** になることを目指しています——多数の AI エージェ
-ントを並列に、高速に、安全 / レビュー機構を内蔵した形で動かすことが、自分で組み
-上げる作業ではなく既定になるように。その根底にある賭けはこうです——エージェントの
-協調は、1 人のために作られたツールをスクレイプするスクリプトの層であってはならず、
-土台そのものであるべきだ、と。思い描くのは、1 体が実装し、別の 1 体がテスト
-し、また別の 1 体がレビューし、最後の判断は人間が持つ、静かで検査可能なコックピット
-です。低レイヤーの仕組み（永続多重ターミナル、ガバナンス、監査、worktree、マージ
-ゲート）は下に同梱され、エンジニアも非エンジニアもそれを意識せずに済みます。
-
-その野心も、ほかのすべてと同じやり方で正直に保ちます——各主張を、あなたが実行できる
-verifier の後ろにゲートし、いま出荷されているものとこの先のものを明確に分けること
-で。
-
-## 既知の制約（今）
-
-これらは隠れた脚注ではなく、意図的な公開準備の境界です。
-
-- Aelyris は **既存のコーディングエージェント CLI をオーケストレーション** します。
-  IDE やエージェントそのものを置き換えるものではありません。
-- 衝突回避は **オーケストレーションされたレーン** に適用されます。Aelyris のフロー
-  外での任意の手動 git は、これを迂回し得ます。
-- エディタ支援は部分的です（completion と hover のみ。go-to-definition、
-  diagnostics、references は未実装）。
-- 安定した公開リリースはまだ出しておらず、パッケージは `"private": true` のままで
-  npm 公開を意図していません。
-- 完全なセッション耐久性、shared brain のライブ主張、ネイティブ級のターミナル品質は、
-  ライブ復元 / 再起動 / リプレイ証明、ネイティブ視覚リグレッション、実機の
-  スリープ / レジューム証拠などのゲートによって、まだブロックされています。
-- 一部のライブ検証には WebView2/CDP アクセス、実機 Windows のスリープ / レジューム、
-  すべての開発サンドボックスでは使えないホストプロセスポリシーが必要です。
-- 認証付き AI CLI のプロンプトスモークテストはトークンを消費する可能性があり、
-  明示的なオペレーター同意なしには実行しません。
-- リリース署名 / アップデータの成果物はオペレーター所有で、既定では生成されません。
-- Windows ファースト。
+1. 残っている operator／external release certification を閉じる。
+2. visible PTY を Current Best とし、structured runtime は明確な優位性を証明した場合だけ採用する。`promote_none` も正しい結論。
+3. 既存 durable owner から deterministic Mission replay／recovery を構築する。第二 journal、第二 TaskGraph、第二 packet store は作らない。
+4. Proofbook、Remote Continuity、governed multi-client operation は、それぞれ別に承認された境界で拡張。
+5. Alyce が完成し、測定済み migration gate が開いた後に Full Native Rust UI へ進む。
 
 ## 技術スタック
 
-- Tauri v2 — Rust バックエンド、WebView2 フロントエンド
-- Rust: Tokio、portable-pty、git2、rusqlite
-- ネイティブ Rust ターミナルレンダリング（ConPTY。input / clipboard / IME を Rust が
-  所有——xterm.js 不使用）
-- React 19、TypeScript、Vite 7
-- Monaco Editor（Vim モード）
-- Radix UI プリミティブ、Lucide アイコン、CSS Modules
-- Windows 11 の Mica/Acrylic ウィンドウスタイリング
+- **Tauri v2** — Rust backend + React／WebView2 Cockpit
+- **Rust** — Tokio、Git2、rusqlite、Windows native API、ConPTY
+- **Frontend** — React 19、TypeScript、Vite 7、CSS Modules、Radix primitives
+- **Editor** — Monaco + Vim mode
+- **Control plane** — 共有 owner 上の authenticated REST／MCP／JSON-RPC projection
+- **Packaging** — Windows EXE、NSIS、MSI、updater contract、Release Doctor
 
 ## 必要環境
 
-- Windows 11 推奨（Windows 10 では視覚品質が低下した形で動作します）
-- Rust ツールチェーン
-- Node.js 24+、pnpm 10+
-- WebView2 ランタイム
+- Windows 11 推奨
+- Rust MSVC toolchain
+- Node.js 24+
+- pnpm 10+
+- WebView2 Runtime
+- live agent 作業には互換 AI coding-agent CLI が 1 つ以上必要
 
-## 開発
-
-新しい Windows 開発PCでは、configured upstream を clone し、repository root で
-tracked bootstrap を実行します。
+## 開発環境の準備
 
 ```powershell
 git clone https://github.com/vellyalis/aelyris.git
 cd aelyris
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap-development.ps1
+corepack pnpm tauri dev
 ```
 
-bootstrap は Node.js 24、pnpm 10、Rust/Cargo を確認し、
-`pnpm install --frozen-lockfile`、Git の tracked truth から ignored local handoff の
-再構築、`pnpm verify:fresh-clone` を一経路で実行します。秘密、署名素材、別PCの
-generated evidence はコピーしません。その後 `pnpm tauri dev` で起動します。
+bootstrap は toolchain を確認し、frozen install を行い、tracked Git truth から ignored continuation state を再構築し、fresh-clone gate を実行します。別 PC の credential、token、署名材料、generated evidence はコピーしません。
 
-current frontier をどのPCからでも再開可能と主張する前に、
-`pnpm verify:cross-pc-continuation` を実行します。local `HEAD`、tracking ref、remote
-advertised ref が一致しない場合、この gate は fail-closed で BLOCK します。
-
-最初の Rust/Tauri ビルドは、特に Cargo の `target` ディレクトリをクリーンした
-後は時間がかかることがあります。
-
-## ビルド
+## Build
 
 ```powershell
-pnpm build
-pnpm tauri:build:dist
+corepack pnpm build
+corepack pnpm tauri:build:dist
 ```
+
+canonical Windows distribution wrapper が Rust PTY sidecar を build し、ローカル unsigned NSIS／MSI artifact を生成します。unsigned artifact は smoke evidence であり、release-ready の主張ではありません。
 
 ## 検証
 
-Aelyris は、実行できる verifier で主張を裏づけることで正直さを保ちます。
-トークンを消費しない便利なチェック:
+普段の focused lane:
 
 ```powershell
-pnpm verify:release:hygiene
-pnpm verify:requirements-spec-design-traceability
-pnpm verify:quality-score
-pnpm verify:goal:safe
+corepack pnpm verify:fast
+cargo check --manifest-path src-tauri/Cargo.toml --lib
+corepack pnpm verify:mcp-orchestrator
+corepack pnpm verify:ai-decision-knowledge
 ```
 
-主張ゲート:
+配布／release evidence:
 
 ```powershell
-pnpm verify:mux-durability-contract
-pnpm verify:visible-agent-pane-binding
-pnpm verify:terminal:native-boundary
+corepack pnpm verify:dist
+corepack pnpm verify:release:doctor
+corepack pnpm verify:supply-chain
+corepack pnpm verify:stack-risk
+corepack pnpm verify:goal:safe:no-token
 ```
 
-トークンを消費する AI プロンプト検証はオプトインのみで、明示的なオペレーター同意
-なしには実行されません:
+別 PC での継続性:
 
 ```powershell
-pnpm verify:terminal:authenticated-ai-cli-consent-packet
+corepack pnpm bootstrap:continuation
+corepack pnpm verify:product-delivery:continuation
+corepack pnpm verify:cross-pc-continuation
 ```
+
+現在の readiness を README や古い score artifact から推測しないでください。必ず exact current HEAD で必要な gate を再生成します。
 
 ## ドキュメント
 
-- ドキュメントガイド: `docs/README.md`
-- GitHub 紹介: `docs/GITHUB_INTRODUCTION.md`
-- コントリビューターワークフロー: `docs/AGENT_WORKFLOWS.md`
-- 公開準備状況: `docs/PUBLICATION_READINESS.md`
-- 要件とクレームポリシー: `docs/requirements.md`
-- 仕様インデックス: `docs/specs/README.md`
-- 可視エージェントランタイム境界:
-  `docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md`
+- [GitHub 紹介文／About copy](docs/GITHUB_INTRODUCTION.md)
+- [ドキュメント索引](docs/README.md)
+- [Contributor workflow](docs/AGENT_WORKFLOWS.md)
+- [Publication readiness](docs/PUBLICATION_READINESS.md)
+- [Requirements／claim policy](docs/requirements.md)
+- [仕様索引](docs/specs/README.md)
+- [MCP tool surface](docs/specs/MCP_TOOL_SURFACE_SPEC.md)
+- [Visible agent runtime](docs/specs/VISIBLE_AGENT_PANE_RUNTIME_SPEC.md)
 
-## リポジトリの衛生
+## 名前
 
-生成されるローカル成果物は意図的に無視されます（`node_modules/`、`dist/`、
-`src-tauri/target/`、ビルド出力、署名素材、ローカルの `.env` ファイル）。
-シークレット、トークン、生成された成果物はコミットしないでください。
+- 製品名: **Aelyris**
+- 読み: **Aelys** / **エイリス**
+- CLI／短縮名: `aelys`
+- 協調エンジン: **Qralis**
 
-## コントリビューション
+## Contributing
 
-Aelyris は速く動いています。変更を出す前に `AGENTS.md` と `CONTRIBUTING.md` を
-読み、要件・実装・検証成果物の整合を保ち、対応するゲートがまだ支えていない主張を
-持ち込まないでください。
+変更前に `AGENTS.md` と `CONTRIBUTING.md` を読んでください。requirements、implementation、test、verifier、public claim を同じ事実へ揃えます。Mission、TaskGraph、PTY、review、merge、packet、durable state の第二 owner を追加しないでください。
 
-## セキュリティ
+## License
 
-脆弱性の疑いがある場合は、トリアージされるまで公開 Issue を開かないでください。
-`SECURITY.md` を参照してください。
-
-## ライセンス
-
-MIT。`LICENSE` を参照してください。
+[LICENSE](LICENSE) を参照してください。

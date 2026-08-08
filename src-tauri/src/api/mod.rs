@@ -139,6 +139,21 @@ const MAX_COMMAND_ENV_VARS: usize = 96;
 const MAX_COMMAND_ENV_KEY_LEN: usize = 128;
 const MAX_COMMAND_ENV_VALUE_BYTES: usize = 32 * 1024;
 
+pub(crate) fn cockpit_mission_history_projection(
+    state: &ApiState,
+    repo_path: String,
+    limit: Option<usize>,
+) -> ApiResult<serde_json::Value> {
+    mcp::cockpit_mission_history_projection(state, repo_path, limit)
+}
+
+pub(crate) fn cockpit_mission_completion_projection(
+    state: &ApiState,
+    repo_path: String,
+) -> ApiResult<serde_json::Value> {
+    mcp::cockpit_mission_completion_projection(state, repo_path)
+}
+
 // ─── State ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

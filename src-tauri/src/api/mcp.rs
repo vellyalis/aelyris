@@ -47,6 +47,35 @@ pub(super) struct ToolCallBody {
     arguments: serde_json::Value,
 }
 
+pub(super) fn cockpit_mission_history_projection(
+    state: &ApiState,
+    repo_path: String,
+    limit: Option<usize>,
+) -> ApiResult<serde_json::Value> {
+    let mut args = serde_json::Map::new();
+    args.insert("repoPath".to_string(), serde_json::Value::String(repo_path));
+    if let Some(limit) = limit {
+        args.insert(
+            "limit".to_string(),
+            serde_json::Value::from(u64::try_from(limit).map_err(|_| {
+                ApiError::BadRequest("Mission history limit is too large".to_string())
+            })?),
+        );
+    }
+    mission_history::execute(state, crate::governance::DEFAULT_ACTOR, &args)
+}
+
+pub(super) fn cockpit_mission_completion_projection(
+    state: &ApiState,
+    repo_path: String,
+) -> ApiResult<serde_json::Value> {
+    let args = serde_json::Map::from_iter([(
+        "repoPath".to_string(),
+        serde_json::Value::String(repo_path),
+    )]);
+    mission_completion::execute(state, crate::governance::DEFAULT_ACTOR, &args)
+}
+
 pub(super) async fn contract_scoped(
     State(state): State<ApiState>,
     Extension(principal): Extension<crate::governance::Principal>,

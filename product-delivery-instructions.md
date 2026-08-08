@@ -3,10 +3,10 @@
 STATUS: ACTIVE
 PROGRAM: `product-delivery`
 ENTRY GATE: PASSED at `f72a61b3d216ca6bc1ce87b84f4fe6567b8f90e0`, Required fast CI run `30876300708`.
-CURRENT PHASE: `AI SELF-OPERATION COMPLETION`.
-ACTIVE SLICE: `AIO-51`.
-LAST COMPLETED SLICE: `AIO-50`.
-NEXT IMPLEMENTATION SLICE: `AIO-51`.
+CURRENT PHASE: `APEX V1 STRUCTURED RUNTIME CANDIDATE COMPARISON`.
+ACTIVE SLICE: `V1-R0`.
+LAST COMPLETED SLICE: `AIO-51`.
+NEXT IMPLEMENTATION SLICE: `V1-R0`.
 
 ```yaml
 continuation_contract:
@@ -64,9 +64,9 @@ Current portfolio classification:
 | MCP current-Mission-scoped review settlement | **COMPLETE** | Exact current-Mission membership, TaskGraph Review status, and durable activation lineage are revalidated before reviewer, candidate, merge, or Git effects; generic/stale/mixed scope fails closed and every merge requires immutable WorkPacket settlement |
 | MCP durable Mission completion receipt | **COMPLETE** | A reconnecting AI reads the current Mission's validated WorkPacket set, aggregate MissionCompletionPacket, exact immutable references, and stable receipt digest from the existing SQLite owner without replaying settlement |
 | MCP bounded Mission history | **COMPLETE** | One bounded newest-first SQLite projection distinguishes the exact current incomplete Mission from prior packet-backed completion without cache/index/Event history or Goal/task/packet payload exposure |
-| Cockpit Mission history and receipt inspector | **ACTIVE / AIO-51** | The safe backend history/receipt projections are available only through MCP; the operator still needs one supported cockpit view without frontend completion authority |
+| Cockpit Mission history and receipt inspector | **COMPLETE** | The existing Orchestrator panel now reads the same bounded history and current immutable receipt projections as MCP, with explicit incomplete/completed/inconsistent states and no frontend completion authority |
 | Native UI migration | **PARKED** | No measured blocker requiring migration before product access |
-| Apex V1 structured-runtime comparison | **PLANNED / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
+| Apex V1 structured-runtime comparison | **ACTIVE / V1-R0 / CANDIDATE-NEUTRAL** | Visible PTY remains Current Best; no OpenCode or other adapter is introduced without an admission case, and `promote_none` is a valid completed comparison outcome |
 | Remote Continuity local read foundation | **COMPLETE / EXTERNAL EXPOSURE PARKED** | RC-1/2/3 provide loopback snapshot, finite payload-free changes, and Governance-backed principal scope discovery; private-network exposure needs a separately approved threat boundary |
 | AI self-operation discovery | **COMPLETE** | REST, MCP contract, and JSON-RPC discovery now project one Governance-filtered catalog for the authenticated principal while calls remain independently authorized |
 | Runtime-owned Proofbook settlement for AI | **COMPLETE** | MCP now exposes the same current-runtime candidate and fail-closed settlement authority as Cockpit without accepting a caller-authored proof packet |
@@ -2109,7 +2109,7 @@ Status: **COMPLETE**.
 
 Capability target: `Product-Accessible` operator inspection of current/prior Mission
 status and immutable completion receipts through the existing cockpit.
-Status: **ACTIVE**.
+Status: **COMPLETE**.
 
 - Add one bounded section to the existing Orchestrator/Cockpit surface; do not create a
   separate dashboard, route, frontend Mission store, history cache, packet store, or
@@ -2130,6 +2130,47 @@ Status: **ACTIVE**.
   incomplete from prior packet-backed completed Missions, inspect/copy the immutable
   completion receipt, refresh after restart, and observe no frontend-created completion
   truth or sensitive payload exposure.
+- Done: two Tauri commands delegate directly to the existing AIO-49/AIO-50 backend
+  projections. No second Mission history store, receipt owner, packet cache, Event
+  history path, review path, merge path, or settlement path was introduced.
+- Done: the existing Orchestrator right-rail panel now contains one collapsed on-demand
+  history section with explicit loading, empty, durability failure, inconsistent, and
+  bounded/truncated states. Current TaskGraph status is shown only when the backend marks
+  it exact; prior rows never inherit current status.
+- Done: packet-backed rows expose only the backend receipt digest. Exact packet
+  references are requested through the current-Mission completion projection and are
+  revalidated against Mission, plan, digest, continuity, and exposure metadata before
+  rendering or copying. Packet contents remain closed.
+- Done: focused frontend behavior passed `8 / 8`; the existing Orchestrator panel passed
+  `11 / 11`; TypeScript, `cargo check --lib`, `cargo fmt --check`, renderer transparency,
+  and glass-legibility checks passed. A live Tauri IPC read returned the exact AIO-50
+  current-incomplete/prior-completed pair, repeated stably, and preserved target Git and
+  worktree state. The real Cockpit rendered the same two classifications before the
+  operator stopped further foreground UI verification.
+- Operator constraint: automated verification must not foreground or maximize Aelyris,
+  WebView2, browser, terminal, or helper windows. Full OS-level visual sign-off for the
+  receipt inspector remains an explicit operator gate; functional receipt inspection,
+  copying, mismatch rejection, and no-payload behavior are covered by the focused render
+  tests and compiled Tauri IPC bridge.
+
+### V1-R0 — Structured Runtime Candidate Comparison
+
+Capability target: candidate-neutral confirmation of whether any structured runtime
+materially beats the verified visible-PTY Current Best without duplicating Aelyris
+Mission, session, permission, evidence, review, merge, or durable-state ownership.
+Status: **ACTIVE**.
+
+- Do not install OpenCode or another runtime merely to create a candidate. Admission
+  requires a bounded receipt covering typed facts, material advantage, provenance,
+  license/update posture, credential isolation, owner non-duplication, disable/retirement,
+  and visible-PTY fallback.
+- Decision states are `promote_none`, `promote_one`, `hold`, and `reject`.
+  `promote_none` is a successful completed outcome when no admitted candidate materially
+  improves structured fidelity, recovery, evidence, permission honesty, or operator
+  visibility.
+- No production adapter, daemon, dependency, alternate session owner, or runtime TUI is
+  created in V1-R0. A production implementation slice opens only after one candidate
+  wins the comparison under the existing Apex roadmap contract.
 
 ## Deferred After GMV
 
@@ -2178,9 +2219,10 @@ value-minimized terminal inventory `AIO-40`, MCP value-minimized mux topology
 `AIO-43`, MCP backend-owned Mission review/settlement `AIO-44`, MCP backend-owned
 Mission planning `AIO-45`, value-minimized Mission continuity `AIO-46`, backend-owned
 visible Mission run-next `AIO-47`, current-Mission-scoped review settlement `AIO-48`,
-durable Mission completion receipt `AIO-49`, and bounded Mission history `AIO-50` are
-also complete. `GMV-3` is Claim-Eligible; cockpit Mission history and receipt inspector
-`AIO-51` is the active frontier.
+durable Mission completion receipt `AIO-49`, bounded Mission history `AIO-50`, and
+cockpit Mission history and receipt inspection `AIO-51` are also complete. `GMV-3` is
+Claim-Eligible; candidate-neutral structured-runtime comparison `V1-R0` is the active
+frontier.
 private-network exposure, live monitoring, remote approvals/input, SSH attach,
 caller-authored review/merge authority, secret-bearing Proofbook starts, broader input
 types, raw artifact opening/export, and other adjacent value remain separately bounded

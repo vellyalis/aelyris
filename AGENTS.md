@@ -537,6 +537,12 @@ Aelyris の継続可能性は、単一PCの local handoff ではなく、Git の
 
 Do not run `cargo test` and `pnpm test` / `pnpm test:full` in parallel on Windows; `link.exe` can fail under resource contention.
 
+Automated verification must not foreground, maximize, or steal focus with an
+Aelyris, WebView2, browser, terminal, or helper window. Prefer CLI, headless,
+hidden, or minimized evidence. If a claim genuinely requires a visible OS
+window, record it as an operator gate and do not launch it unless the operator
+explicitly requests that visual run.
+
 ## Architecture
 
 ```text

@@ -10,6 +10,7 @@ import type { AgentSession } from "../../shared/types/agent";
 import type { AgentEvent, AgentEventKind } from "../../shared/types/eventBus";
 import type { DispatchPlan, LoopState } from "../../shared/types/orchestratorPlan";
 import type { TaskStatus } from "../../shared/types/taskStatus";
+import { MissionHistorySection } from "./MissionHistorySection";
 import styles from "./OrchestratorPanel.module.css";
 
 const LOOP_STATE_LABEL: Record<LoopState, string> = {
@@ -460,6 +461,8 @@ export function OrchestratorPanel({ projectPath = "", sessions = EMPTY_SESSIONS 
           ))
         )}
       </ul>
+
+      <MissionHistorySection repoPath={projectPath} />
 
       {recentEvents.length > 0 && (
         <div className={styles.feed}>

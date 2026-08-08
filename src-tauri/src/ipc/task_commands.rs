@@ -65,6 +65,25 @@ pub fn cockpit_mission_current(
 }
 
 #[tauri::command]
+pub fn cockpit_mission_history(
+    state: State<'_, crate::api::ApiState>,
+    repo_path: String,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    crate::api::cockpit_mission_history_projection(state.inner(), repo_path, limit)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn cockpit_mission_completion(
+    state: State<'_, crate::api::ApiState>,
+    repo_path: String,
+) -> Result<serde_json::Value, String> {
+    crate::api::cockpit_mission_completion_projection(state.inner(), repo_path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn mission_plan_accept(
     manager: State<'_, Arc<TaskManager>>,
     plan_id: String,
